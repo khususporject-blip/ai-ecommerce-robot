@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { planCommand } from "./robot-agent.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -294,6 +295,14 @@ app.post("/auth/logout", (req, res) => {
 });
 
 app.get("/oauth", (_req, res) => res.redirect("/auth/tiktok"));
+
+app.post("/api/assistant", (req, res) => {
+  const plan = planCommand(req.body?.command);
+  if (plan.action === "tiktok_login" && plan.path) {
+    return res.json({ ...plan, execute: true });
+  }
+  res.json({ ...plan, execute: false });
+});
 app.use(express.static(__dirname, { extensions: ["html"] }));
 app.use((_req, res) => res.status(404).send("Not found"));
 
