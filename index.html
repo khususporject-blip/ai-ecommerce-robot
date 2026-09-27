@@ -13,9 +13,49 @@
 <header class="nav"><div class="brand"><div class="mark">R</div>Robot AI</div><nav class="links"><a href="#fitur">Fitur</a><a href="#cara-kerja">Cara kerja</a><a href="privacy.html">Privasi</a><a href="terms.html">Terms</a></nav><a class="login" href="/auth/tiktok">Masuk dengan TikTok</a></header>
 <main>
 <section class="hero"><div><div class="eyebrow">AI Shopping Assistant</div><h1>Belanja lebih cepat dengan Robot AI.</h1><p>Robot AI membantu pengguna mencari, memahami, dan membandingkan produk melalui percakapan sederhana. Semua kebutuhan belanja dirangkum dalam satu pengalaman yang praktis.</p><a class="cta" href="#cara-kerja">Lihat cara kerja</a></div>
-<div class="card"><div class="small">Contoh percakapan</div><div class="chat"><div class="msg bot">Halo! Saya Robot AI. Produk apa yang sedang kamu cari?</div><div class="msg user">Saya butuh headphone untuk kerja dan meeting.</div><div class="msg bot">Siap. Saya bisa bantu mempersempit pilihan berdasarkan budget, fitur, dan kebutuhan meeting.</div><div class="msg user">Budget sekitar Rp1 juta.</div><div class="msg bot">Oke. Saya akan fokus pada pilihan sekitar budget tersebut dan menjelaskan perbedaannya.</div><div class="input">Ketik kebutuhan belanja kamu…</div></div></div></section>
+<div class="card"><div class="small">Contoh percakapan</div><div class="chat"><div class="msg bot">Halo! Saya Robot AI. Produk apa yang sedang kamu cari?</div><div class="msg user">Saya butuh headphone untuk kerja dan meeting.</div><div class="msg bot">Siap. Saya bisa bantu mempersempit pilihan berdasarkan budget, fitur, dan kebutuhan meeting.</div><div class="msg user">Budget sekitar Rp1 juta.</div><div class="msg bot">Oke. Saya akan fokus pada pilihan sekitar budget tersebut dan menjelaskan perbedaannya.</div><div class="input" id="assistantInput">Ketik kebutuhan belanja kamu…</div><div style="display:flex;gap:8px;margin-top:10px"><input id="command" aria-label="Perintah Robot AI" placeholder="Contoh: hubungkan TikTok" style="flex:1;border:1px solid #dddfe7;border-radius:10px;padding:11px"><button id="send" style="border:0;border-radius:10px;padding:11px 14px;font-weight:700">Kirim</button><button id="voice" title="Perintah suara" style="border:0;border-radius:10px;padding:11px 14px">🎙️</button></div><div id="assistantReply" class="small" style="margin-top:10px"></div></div></div></section>
 <section class="section" id="fitur"><h2>Yang bisa dilakukan Robot AI</h2><div class="grid"><article class="feature"><div>🔎</div><h3>Cari kebutuhan</h3><p>Pengguna menjelaskan kebutuhan dengan bahasa biasa, lalu Robot AI membantu menyusun kriteria pencarian.</p></article><article class="feature"><div>⚖️</div><h3>Bandingkan pilihan</h3><p>Ringkas perbedaan produk, fitur, dan pertimbangan pembelian agar pengguna lebih mudah memilih.</p></article><article class="feature"><div>🧠</div><h3>Asisten percakapan</h3><p>Pengalaman dibuat seperti berbicara dengan asisten pribadi, bukan sekadar mengisi formulir pencarian.</p></article></div></section>
 <section class="section" id="cara-kerja"><div class="card"><h2>Login dengan TikTok</h2><p class="small">Robot AI menggunakan TikTok Login Kit dengan OAuth 2.0. Authorization code ditukar oleh backend sehingga client secret dan token tidak pernah dikirim ke frontend.</p><a class="cta" href="/auth/tiktok">Continue with TikTok</a></div></section>
+</main>
+<script>
+const command = document.getElementById("command");
+const reply = document.getElementById("assistantReply");
+async function runCommand() {
+  const value = command.value.trim();
+  if (!value) return;
+  reply.textContent = "Robot AI memproses…";
+  try {
+    const response = await fetch("/api/assistant", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command:value})});
+    const data = await response.json();
+    reply.textContent = data.reply;
+    if (data.execute && data.path) window.location.href = data.path;
+  } catch {
+    reply.textContent = "Backend Robot AI belum tersedia di alamat ini.";
+  }
+}
+document.getElementById("send").addEventListener("click", runCommand);
+command.addEventListener("keydown", (event) => { if (event.key === "Enter") runCommand(); });
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognition) {
+  const recognition = new SpeechRecognition();
+  recognition.lang = "id-ID";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  document.getElementById("voice").addEventListener("click", () => {
+    reply.textContent = "Mendengarkan…";
+    recognition.start();
+  });
+  recognition.addEventListener("result", (event) => {
+    command.value = event.results[0][0].transcript;
+    runCommand();
+  });
+  recognition.addEventListener("error", () => { reply.textContent = "Perintah suara gagal dibaca. Coba lagi."; });
+} else {
+  document.getElementById("voice").disabled = true;
+  document.getElementById("voice").title = "Browser ini tidak menyediakan Speech Recognition";
+}
+</script>
 </main>
 <footer class="footer"><div>© 2026 Robot AI</div><div><a href="terms.html">Terms of Service</a><a href="privacy.html">Privacy Policy</a><a href="docs/tiktok-login.md">Developer docs</a></div></footer>
 </body></html>
