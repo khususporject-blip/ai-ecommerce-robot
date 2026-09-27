@@ -10,7 +10,9 @@ const port = Number(process.env.PORT || 3000);
 const CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 const CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
-const REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || (APP_BASE_URL ? `${APP_BASE_URL}/auth/tiktok/callback` : "");
+const REDIRECT_URI =
+  process.env.TIKTOK_REDIRECT_URI ||
+  (APP_BASE_URL ? `${APP_BASE_URL}/auth/tiktok/callback` : "");
 const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,user.info.profile";
 
 const pendingStates = new Map();
@@ -29,6 +31,15 @@ function requireConfig(res) {
 
 function randomToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("base64url");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function setCookie(res, name, value, maxAge) {
@@ -61,24 +72,73 @@ function parseCookies(header = "") {
     if (index < 0) continue;
     const key = part.slice(0, index).trim();
     const value = part.slice(index + 1).trim();
-    out[key] = decodeURIComponent(value);
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch {
+      out[key] = value;
+    }
   }
   return out;
 }
 
 function html(title, body) {
-  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f7fb;color:#16181d}.card{background:#fff;border:1px solid #ddd;border-radius:18px;padding:32px;max-width:620px;width:calc(100% - 44px);box-shadow:0 18px 50px rgba(20,25,40,.08)}a{color:#5b35d5}.ok{color:#16794b}.err{color:#b42318}pre{white-space:pre-wrap;word-break:break-word;background:#f7f7fa;padding:14px;border-radius:10px}</style></head><body><main class="card">${body}</main></body></html>`;
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f7fb;color:#16181d}.card{background:#fff;border:1px solid #ddd;border-radius:18px;padding:32px;max-width:620px;width:calc(100% - 44px);box-shadow:0 18px 50px rgba(20,25,40,.08)}a{color:#5b35d5}.ok{color:#16794b}.err{color:#b42318}pre{white-space:pre-wrap;word-break:break-word;background:#f7f7fa;padding:14px;border-radius:10px}</style></head><body><main class="card">${body}</main></body></html>`;
+}
+
+function tokenExpiry(seconds, fallback = 86400) {
+  const value = Number(seconds);
+  return Date.now() + (Number.isFinite(value) && value > 0 ? value : fallback) * 1000;
+}
+
+function storeTokenSet(session, tokenBody) {
+  session.accessToken = tokenBody.access_token;
+  session.refreshToken = tokenBody.refresh_token || session.refreshToken;
+  session.expiresAt = tokenExpiry(tokenBody.expires_in);
+  session.refreshExpiresAt = tokenExpiry(tokenBody.refresh_expires_in, 365 * 86400);
+  session.scope = tokenBody.scope || session.scope || SCOPES;
+  session.tokenType = tokenBody.token_type || session.tokenType || "Bearer";
+  session.openId = tokenBody.open_id || session.openId;
+}
+
+async function refreshSession(session) {
+  if (!session?.refreshToken) return false;
+  if (session.refreshExpiresAt && session.refreshExpiresAt <= Date.now()) return false;
+
+  const response = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_key: CLIENT_KEY,
+      client_secret: CLIENT_SECRET,
+      grant_type: "refresh_token",
+      refresh_token: session.refreshToken
+    })
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.error) return false;
+
+  storeTokenSet(session, body);
+  return true;
+}
+
+async function ensureFreshSession(session) {
+  if (!session) return false;
+  const refreshWindow = 20 * 60 * 1000;
+  if (session.expiresAt > Date.now() + refreshWindow) return true;
+  return refreshSession(session);
 }
 
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "robot-ai",
-    oauthConfigured: Boolean(CLIENT_KEY && CLIENT_SECRET && REDIRECT_URI)
+    oauthConfigured: Boolean(CLIENT_KEY && CLIENT_SECRET && REDIRECT_URI),
+    sessionStore: "memory"
   });
 });
 
-app.get("/auth/tiktok", (req, res) => {
+app.get("/auth/tiktok", (_req, res) => {
   if (!requireConfig(res)) return;
 
   const state = randomToken(32);
@@ -103,24 +163,36 @@ app.get("/auth/tiktok/callback", async (req, res) => {
   clearCookie(res, "robot_ai_oauth_state");
 
   if (error) {
-    res.status(400).send(html("TikTok Login — Robot AI", `<h1>Login dibatalkan</h1><p class="err">${String(error_description || error).replace(/[<>]/g, "")}</p><p><a href="/">Kembali ke Robot AI</a></p>`));
+    res.status(400).send(html(
+      "TikTok Login — Robot AI",
+      `<h1>Login dibatalkan</h1><p class="err">${escapeHtml(error_description || error)}</p><p><a href="/">Kembali ke Robot AI</a></p>`
+    ));
     return;
   }
 
   if (!sameToken(String(state || ""), cookieState)) {
-    res.status(400).send(html("TikTok Login — Robot AI", "<h1>Login gagal</h1><p class=\"err\">State OAuth tidak valid. Silakan mulai login lagi.</p><p><a href=\"/auth/tiktok\">Coba lagi</a></p>"));
+    res.status(400).send(html(
+      "TikTok Login — Robot AI",
+      "<h1>Login gagal</h1><p class=\"err\">State OAuth tidak valid. Silakan mulai login lagi.</p><p><a href=\"/auth/tiktok\">Coba lagi</a></p>"
+    ));
     return;
   }
 
   const expiresAt = pendingStates.get(String(state));
   pendingStates.delete(String(state));
   if (!expiresAt || expiresAt < Date.now()) {
-    res.status(400).send(html("TikTok Login — Robot AI", "<h1>Login kedaluwarsa</h1><p class=\"err\">Sesi OAuth sudah kedaluwarsa. Silakan mulai lagi.</p><p><a href=\"/auth/tiktok\">Coba lagi</a></p>"));
+    res.status(400).send(html(
+      "TikTok Login — Robot AI",
+      "<h1>Login kedaluwarsa</h1><p class=\"err\">Sesi OAuth sudah kedaluwarsa. Silakan mulai lagi.</p><p><a href=\"/auth/tiktok\">Coba lagi</a></p>"
+    ));
     return;
   }
 
   if (!code) {
-    res.status(400).send(html("TikTok Login — Robot AI", "<h1>Login gagal</h1><p class=\"err\">TikTok tidak mengembalikan authorization code.</p><p><a href=\"/auth/tiktok\">Coba lagi</a></p>"));
+    res.status(400).send(html(
+      "TikTok Login — Robot AI",
+      "<h1>Login gagal</h1><p class=\"err\">TikTok tidak mengembalikan authorization code.</p><p><a href=\"/auth/tiktok\">Coba lagi</a></p>"
+    ));
     return;
   }
 
@@ -139,45 +211,79 @@ app.get("/auth/tiktok/callback", async (req, res) => {
 
     const tokenBody = await tokenResponse.json().catch(() => ({}));
     if (!tokenResponse.ok || tokenBody.error) {
-      res.status(502).send(html("TikTok Login — Robot AI", `<h1>Token exchange gagal</h1><p class="err">TikTok menolak pertukaran authorization code.</p><pre>${JSON.stringify({ error: tokenBody.error, error_description: tokenBody.error_description, log_id: tokenBody.log_id }, null, 2)}</pre><p><a href="/auth/tiktok">Coba lagi</a></p>`));
+      res.status(502).send(html(
+        "TikTok Login — Robot AI",
+        `<h1>Token exchange gagal</h1><p class="err">TikTok menolak pertukaran authorization code.</p><pre>${escapeHtml(JSON.stringify({ error: tokenBody.error, error_description: tokenBody.error_description, log_id: tokenBody.log_id }, null, 2))}</pre><p><a href="/auth/tiktok">Coba lagi</a></p>`
+      ));
       return;
     }
 
-    const profileResponse = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username,profile_deep_link", {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` }
-    });
+    const profileResponse = await fetch(
+      "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,username,profile_deep_link",
+      { headers: { Authorization: `Bearer ${tokenBody.access_token}` } }
+    );
     const profileBody = await profileResponse.json().catch(() => ({}));
 
     const sessionId = randomToken(32);
-    sessions.set(sessionId, {
+    const session = {
       createdAt: Date.now(),
       openId: tokenBody.open_id || profileBody?.data?.user?.open_id || null,
-      accessToken: tokenBody.access_token,
-      refreshToken: tokenBody.refresh_token,
-      expiresAt: Date.now() + Number(tokenBody.expires_in || 86400) * 1000,
+      accessToken: null,
+      refreshToken: null,
+      expiresAt: 0,
+      refreshExpiresAt: 0,
+      scope: tokenBody.scope || SCOPES,
+      tokenType: tokenBody.token_type || "Bearer",
       profile: profileBody?.data?.user || null
-    });
+    };
+    storeTokenSet(session, tokenBody);
+    sessions.set(sessionId, session);
 
     setCookie(res, "robot_ai_session", sessionId, 86400);
-    const profile = profileBody?.data?.user || {};
-    res.send(html("Robot AI — TikTok Connected", `<h1 class="ok">TikTok berhasil terhubung</h1><p>Robot AI sudah menerima identitas TikTok melalui backend.</p><pre>${JSON.stringify({ open_id: profile.open_id || tokenBody.open_id, display_name: profile.display_name || null, username: profile.username || null }, null, 2)}</pre><p><a href="/">Kembali ke Robot AI</a></p>`));
+    const profile = session.profile || {};
+    res.send(html(
+      "Robot AI — TikTok Connected",
+      `<h1 class="ok">TikTok berhasil terhubung</h1><p>Robot AI sudah menerima identitas TikTok melalui backend.</p><pre>${escapeHtml(JSON.stringify({
+        open_id: profile.open_id || session.openId,
+        display_name: profile.display_name || null,
+        username: profile.username || null,
+        scope: session.scope
+      }, null, 2))}</pre><p><a href="/">Kembali ke Robot AI</a></p>`
+    ));
   } catch (error) {
-    res.status(502).send(html("TikTok Login — Robot AI", `<h1>Server error</h1><p class="err">Backend tidak dapat menyelesaikan koneksi ke TikTok.</p><pre>${String(error?.message || error).replace(/[<>]/g, "")}</pre><p><a href="/auth/tiktok">Coba lagi</a></p>`));
+    res.status(502).send(html(
+      "TikTok Login — Robot AI",
+      `<h1>Server error</h1><p class="err">Backend tidak dapat menyelesaikan koneksi ke TikTok.</p><pre>${escapeHtml(error?.message || error)}</pre><p><a href="/auth/tiktok">Coba lagi</a></p>`
+    ));
   }
 });
 
-app.get("/api/me", (req, res) => {
+app.get("/api/me", async (req, res) => {
   const cookies = parseCookies(req.headers.cookie);
   const session = sessions.get(cookies.robot_ai_session);
   if (!session) return res.status(401).json({ authenticated: false });
 
-  if (session.expiresAt <= Date.now()) {
-    sessions.delete(cookies.robot_ai_session);
-    clearCookie(res, "robot_ai_session");
-    return res.status(401).json({ authenticated: false });
+  try {
+    const fresh = await ensureFreshSession(session);
+    if (!fresh && session.expiresAt <= Date.now()) {
+      sessions.delete(cookies.robot_ai_session);
+      clearCookie(res, "robot_ai_session");
+      return res.status(401).json({ authenticated: false, reason: "token_expired" });
+    }
+  } catch {
+    if (session.expiresAt <= Date.now()) {
+      sessions.delete(cookies.robot_ai_session);
+      clearCookie(res, "robot_ai_session");
+      return res.status(401).json({ authenticated: false, reason: "token_refresh_failed" });
+    }
   }
 
-  res.json({ authenticated: true, profile: session.profile });
+  res.json({
+    authenticated: true,
+    profile: session.profile,
+    scope: session.scope,
+    tokenExpiresAt: session.expiresAt
+  });
 });
 
 app.post("/auth/logout", (req, res) => {
@@ -188,12 +294,8 @@ app.post("/auth/logout", (req, res) => {
 });
 
 app.get("/oauth", (_req, res) => res.redirect("/auth/tiktok"));
-
 app.use(express.static(__dirname, { extensions: ["html"] }));
-
-app.use((_req, res) => {
-  res.status(404).send("Not found");
-});
+app.use((_req, res) => res.status(404).send("Not found"));
 
 app.listen(port, () => {
   console.log(`Robot AI listening on port ${port}`);
