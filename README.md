@@ -10,7 +10,8 @@ Robot AI is an AI shopping-assistant foundation with TikTok Login Kit integratio
 - TikTok OAuth callback: `GET /auth/tiktok/callback`
 - Health check: `GET /health`
 - Authenticated profile check: `GET /api/me`
-- Logout: `POST /auth/logout`
+- TikTok creator info: `GET /api/tiktok/creator-info`
+- TikTok direct-post from verified URL: `POST /api/tiktok/publish-url`
 - Assistant command router: `POST /api/assistant`
 - OAuth documentation: `docs/tiktok-login.md`
 
@@ -48,6 +49,10 @@ TikTok URL-property verification file is present at the repository root with the
 
 The exact Railway callback URI must be registered in TikTok Login Kit Web configuration. The TikTok client key and secret are intentionally not stored in GitHub.
 
+## Direct Post
+
+The backend now contains the Direct Post request path using `PULL_FROM_URL`. TikTok requires the relevant Content Posting API permission and a verified URL/domain for this source method. Unaudited clients are subject to TikTok's posting restrictions.
+
 ## Security notes
 
 - Never commit `TIKTOK_CLIENT_SECRET`.
@@ -56,3 +61,7 @@ The exact Railway callback URI must be registered in TikTok Login Kit Web config
 - Use HTTPS in production.
 - OAuth state is generated server-side and checked against an HttpOnly cookie.
 - The current session/token store is in-memory and is suitable for the current single-instance foundation; replace it with persistent encrypted storage before multi-instance production automation.
+
+## Deployment trigger
+
+This commit records the current production source state so the connected Railway GitHub service can consume the latest default-branch commit rather than an older deployment snapshot.
