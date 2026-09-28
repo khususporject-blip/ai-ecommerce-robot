@@ -132,6 +132,10 @@ async function ensureFreshSession(session) {
   return refreshSession(session);
 }
 
+app.get("/tiktokZZ2lwSDmYJCeNPKH1s59RZl3Qp6OU9AX.txt", (_req, res) => {
+  res.type("text/plain").send("tiktok-developers-site-verification=ZZ2lwSDmYJCeNPKH1s59RZl3Qp6OU9AX");
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
