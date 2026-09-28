@@ -1,7 +1,7 @@
 const ACTIONS = [
   { id: "tiktok_login", patterns: [/login.*tiktok/i, /hubung.*tiktok/i, /sambung.*tiktok/i], reply: "Siap. Saya akan membuka koneksi TikTok.", path: "/auth/tiktok", status: "PROVEN" },
-  { id: "auth_status", patterns: [/status.*login/i, /sudah.*login/i, /cek.*login/i], reply: "Saya cek status koneksi TikTok dari sesi Robot AI.", path: "/api/me", status: "PROVEN" },
-  { id: "content_creation", patterns: [/buat.*konten.*tiktok/i, /buat.*konten/i, /bikin.*konten/i], reply: "Saya siapkan draft konten secara internal. Publikasi TikTok tetap bergantung pada permission API.", path: "/api/content/prepare", status: "MADE — NOT VERIFIED" },
+  { id: "auth_status", patterns: [/status.*login/i, /sudah.*login/i, /cek.*login/i], reply: "Saya cek status koneksi TikTok dari sesi Robot AI.", status: "PROVEN" },
+  { id: "content_creation", patterns: [/buat.*konten.*tiktok/i, /buat.*konten/i, /bikin.*konten/i], reply: "Saya siapkan draft konten secara internal. Publikasi TikTok tetap bergantung pada permission API.", status: "MADE — NOT VERIFIED" },
   { id: "product_content", patterns: [/konten.*produk/i, /buat.*konten.*produk/i], reply: "Fondasi konten produk sudah disiapkan. Eksekusi katalog/publikasi menunggu API dan permission eksternal.", status: "MADE — NOT VERIFIED" },
   { id: "product_upload", patterns: [/upload.*produk/i, /unggah.*produk/i, /upload.*barang/i], reply: "Fondasi workflow upload produk sudah disiapkan. Upload nyata belum dijalankan karena API/permission TikTok Shop belum tersedia.", status: "MADE — NOT VERIFIED" },
   { id: "sales_workflow", patterns: [/workflow.*sales/i, /penjualan/i, /jualan/i, /sales/i], reply: "Fondasi workflow penjualan sudah disiapkan. Eksekusi nyata belum diverifikasi terhadap API TikTok Shop.", status: "MADE — NOT VERIFIED" },
