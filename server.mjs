@@ -19,6 +19,7 @@ const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
 const pendingStates = new Map();
 const sessions = new Map();
+const tasks = new Map();
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
@@ -326,6 +327,39 @@ async function tiktokApi(session, pathName, options = {}) {
   });
 }
 
+function createTask(type, input = {}, status = "prepared") {
+  const id = randomToken(12);
+  const task = { id, type, status, input, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  tasks.set(id, task);
+  return task;
+}
+
+app.get("/api/tasks", (_req, res) => {
+  res.json({ tasks: [...tasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100) });
+});
+
+app.post("/api/tasks", (req, res) => {
+  const type = String(req.body?.type || "").trim();
+  if (!/^(content|product_content|product_upload|sales|event)$/.test(type)) {
+    return res.status(400).json({ error: "task_type_invalid" });
+  }
+  const task = createTask(type, req.body?.input || {});
+  res.status(201).json({ ok: true, task });
+});
+
+app.post("/api/content/prepare", (req, res) => {
+  const product = String(req.body?.product || "produk").trim().slice(0, 160);
+  const audience = String(req.body?.audience || "calon pembeli").trim().slice(0, 120);
+  const offer = String(req.body?.offer || "").trim().slice(0, 160);
+  const task = createTask("content", { product, audience, offer });
+  const tag = product.replace(/[^A-Za-z0-9]/g, "").slice(0, 42) || "Produk";
+  res.status(201).json({ ok: true, task, content: {
+    hook: "Butuh " + product + " yang praktis untuk " + audience + "? Cek ini sebelum beli.",
+    caption: product + " untuk " + audience + ". " + (offer ? offer + " " : "") + "Lihat detail dan pilih sesuai kebutuhanmu.",
+    hashtags: ["#TikTokShop", "#Rekomendasi", "#BelanjaOnline", "#" + tag]
+  }});
+});
+
 app.get("/api/tiktok/creator-info", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
@@ -483,7 +517,7 @@ app.post("/api/tiktok/publish-url", async (req, res) => {
     if (!initResponse.ok || initBody?.error?.code !== "ok") {
       return res.status(initResponse.status || 502).json({
         error: "publish_init_failed",
-        tiktok: initBody
+        tiktok: tiktokFailure(initResponse.status, initBody, "FILE_UPLOAD")
       });
     }
 
