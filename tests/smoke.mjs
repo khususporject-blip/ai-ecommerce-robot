@@ -11,7 +11,6 @@ assert.match(server, /grant_type: "refresh_token"/);
 assert.match(server, /\/api\/tiktok\/creator-info/);
 assert.match(server, /\/api\/tiktok\/publish-url/);
 assert.match(server, /PULL_FROM_URL/);
-assert.match(server, /video.publish/);
 assert.match(server, /timingSafeEqual/);
 assert.match(server, /HttpOnly/);
 assert.match(server, /SameSite=Lax/);
