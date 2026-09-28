@@ -15,6 +15,7 @@ const REDIRECT_URI =
   process.env.TIKTOK_REDIRECT_URI ||
   (APP_BASE_URL ? `${APP_BASE_URL}/auth/tiktok/callback` : "");
 const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,user.info.profile";
+const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
 const pendingStates = new Map();
 const sessions = new Map();
@@ -285,6 +286,125 @@ app.get("/api/me", async (req, res) => {
     scope: session.scope,
     tokenExpiresAt: session.expiresAt
   });
+});
+
+async function requireTikTokSession(req, res) {
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionId = cookies.robot_ai_session;
+  const session = sessions.get(sessionId);
+  if (!session) {
+    res.status(401).json({ authenticated: false, error: "tiktok_not_connected" });
+    return null;
+  }
+  try {
+    const fresh = await ensureFreshSession(session);
+    if (!fresh && session.expiresAt <= Date.now()) {
+      sessions.delete(sessionId);
+      clearCookie(res, "robot_ai_session");
+      res.status(401).json({ authenticated: false, error: "tiktok_token_expired" });
+      return null;
+    }
+  } catch {
+    if (session.expiresAt <= Date.now()) {
+      sessions.delete(sessionId);
+      clearCookie(res, "robot_ai_session");
+      res.status(401).json({ authenticated: false, error: "tiktok_token_refresh_failed" });
+      return null;
+    }
+  }
+  return session;
+}
+
+async function tiktokApi(session, pathName, options = {}) {
+  return fetch(`${TIKTOK_API}${pathName}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      ...(options.headers || {})
+    }
+  });
+}
+
+app.get("/api/tiktok/creator-info", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  try {
+    const response = await tiktokApi(session, "/post/publish/creator_info/query/", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    const body = await response.json().catch(() => ({}));
+    res.status(response.ok ? 200 : response.status).json(body);
+  } catch (error) {
+    res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
+  }
+});
+
+app.post("/api/tiktok/publish-url", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+
+  const videoUrl = String(req.body?.video_url || "").trim();
+  const title = String(req.body?.title || "").trim();
+  const privacyLevel = String(req.body?.privacy_level || "").trim();
+
+  if (!videoUrl || !/^https:\/\//i.test(videoUrl)) {
+    return res.status(400).json({ error: "video_url_required", message: "video_url HTTPS wajib diisi." });
+  }
+
+  try {
+    const creatorResponse = await tiktokApi(session, "/post/publish/creator_info/query/", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    const creatorBody = await creatorResponse.json().catch(() => ({}));
+    if (!creatorResponse.ok || creatorBody?.error?.code !== "ok") {
+      return res.status(creatorResponse.status || 502).json({
+        error: "creator_info_failed",
+        tiktok: creatorBody
+      });
+    }
+
+    const options = creatorBody?.data?.privacy_level_options || [];
+    const selectedPrivacy = privacyLevel || options.find((value) => value === "SELF_ONLY") || options[0];
+    if (!selectedPrivacy || !options.includes(selectedPrivacy)) {
+      return res.status(400).json({
+        error: "privacy_level_invalid",
+        allowed: options
+      });
+    }
+
+    const initResponse = await tiktokApi(session, "/post/publish/video/init/", {
+      method: "POST",
+      body: JSON.stringify({
+        post_info: {
+          title: title.slice(0, 2200),
+          privacy_level: selectedPrivacy
+        },
+        source_info: {
+          source: "PULL_FROM_URL",
+          video_url: videoUrl
+        }
+      })
+    });
+    const initBody = await initResponse.json().catch(() => ({}));
+    if (!initResponse.ok || initBody?.error?.code !== "ok") {
+      return res.status(initResponse.status || 502).json({
+        error: "publish_init_failed",
+        tiktok: initBody
+      });
+    }
+
+    res.status(202).json({
+      ok: true,
+      status: "submitted_to_tiktok",
+      publish_id: initBody.data?.publish_id || null,
+      note: "TikTok may restrict unaudited clients to private visibility."
+    });
+  } catch (error) {
+    res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
+  }
 });
 
 app.post("/auth/logout", (req, res) => {
