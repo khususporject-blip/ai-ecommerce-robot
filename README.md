@@ -11,7 +11,7 @@ Robot AI is an AI shopping-assistant foundation with TikTok Login Kit integratio
 - Health check: `GET /health`
 - Authenticated profile check: `GET /api/me`
 - Logout: `POST /auth/logout`
-- Deployment descriptor: `render.yaml`
+- Assistant command router: `POST /api/assistant`
 - OAuth documentation: `docs/tiktok-login.md`
 
 ## TikTok Login Kit
@@ -29,17 +29,24 @@ Required server variables:
 
 ## Hosting
 
-The repository contains a ready-to-deploy Render configuration. A connected Render account is required before ChatGPT can create the live service and securely provision the TikTok environment variables.
+The production Node/Express service is deployed on Railway.
 
-The previous Vercel project is not currently accessible through the active Vercel connection, so it is intentionally not modified.
+Public service domain:
+`https://robot-ai-production-1fdb.up.railway.app`
 
-GitHub Pages configuration is also retained for static hosting/verification fallback, but Pages cannot run the Node OAuth backend.
+Production callback URI:
+`https://robot-ai-production-1fdb.up.railway.app/auth/tiktok/callback`
+
+Railway healthcheck:
+`/health`
+
+Railway injects the runtime `PORT`; the server listens on `process.env.PORT`.
 
 ## Verification
 
 TikTok URL-property verification file is present at the repository root with the exact filename and verification value supplied by TikTok.
 
-After a live HTTPS backend is available, register its exact callback URI in TikTok Login Kit Web configuration.
+The exact Railway callback URI must be registered in TikTok Login Kit Web configuration. The TikTok client key and secret are intentionally not stored in GitHub.
 
 ## Security notes
 
@@ -47,4 +54,5 @@ After a live HTTPS backend is available, register its exact callback URI in TikT
 - Never exchange TikTok authorization codes from browser JavaScript.
 - Keep access and refresh tokens server-side.
 - Use HTTPS in production.
-- Replace the in-memory session/token store with persistent encrypted storage before multi-instance production automation.
+- OAuth state is generated server-side and checked against an HttpOnly cookie.
+- The current session/token store is in-memory and is suitable for the current single-instance foundation; replace it with persistent encrypted storage before multi-instance production automation.
