@@ -341,6 +341,97 @@ app.get("/api/tiktok/creator-info", async (req, res) => {
   }
 });
 
+function tiktokFailure(status, body, fallback = null) {
+  const code = body?.error?.code || body?.error || null;
+  const message = body?.error?.message || body?.message || null;
+  const classification =
+    status === 401 || code === "access_token_invalid" ? "authentication" :
+    status === 403 && /scope/i.test(String(code || message)) ? "missing_scope" :
+    status === 403 && /url|domain|ownership/i.test(String(code || message)) ? "domain_verification" :
+    status === 403 ? "authorization_or_provider_restriction" :
+    status === 429 ? "rate_limit" :
+    status >= 500 ? "provider_or_infrastructure" : "request_or_provider";
+  return {
+    status,
+    code,
+    message,
+    classification,
+    fallback
+  };
+}
+
+app.get("/api/tiktok/publish-status/:publish_id", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+
+  const publishId = String(req.params.publish_id || "").trim();
+  if (!publishId) return res.status(400).json({ error: "publish_id_required" });
+
+  try {
+    const response = await tiktokApi(session, "/post/publish/status/fetch/", {
+      method: "POST",
+      body: JSON.stringify({ publish_id: publishId })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.error?.code !== "ok") {
+      return res.status(response.status || 502).json({
+        error: "publish_status_failed",
+        tiktok: tiktokFailure(response.status, body)
+      });
+    }
+    res.json({ ok: true, publish_id: publishId, data: body.data || null });
+  } catch (error) {
+    res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
+  }
+});
+
+app.post("/api/tiktok/upload-init", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+
+  const videoSize = Number(req.body?.video_size);
+  const chunkSize = Number(req.body?.chunk_size || videoSize);
+  const totalChunkCount = Number(req.body?.total_chunk_count || 1);
+
+  if (!Number.isSafeInteger(videoSize) || videoSize <= 0 ||
+      !Number.isSafeInteger(chunkSize) || chunkSize <= 0 ||
+      !Number.isSafeInteger(totalChunkCount) || totalChunkCount <= 0) {
+    return res.status(400).json({
+      error: "upload_parameters_invalid",
+      message: "video_size, chunk_size, dan total_chunk_count harus berupa integer positif."
+    });
+  }
+
+  try {
+    const response = await tiktokApi(session, "/post/publish/inbox/video/init/", {
+      method: "POST",
+      body: JSON.stringify({
+        source_info: {
+          source: "FILE_UPLOAD",
+          video_size: videoSize,
+          chunk_size: chunkSize,
+          total_chunk_count: totalChunkCount
+        }
+      })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.error?.code !== "ok") {
+      return res.status(response.status || 502).json({
+        error: "upload_init_failed",
+        tiktok: tiktokFailure(response.status, body, "FILE_UPLOAD")
+      });
+    }
+    res.status(202).json({
+      ok: true,
+      status: "upload_ready",
+      publish_id: body.data?.publish_id || null,
+      upload_url: body.data?.upload_url || null
+    });
+  } catch (error) {
+    res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
+  }
+});
+
 app.post("/api/tiktok/publish-url", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
