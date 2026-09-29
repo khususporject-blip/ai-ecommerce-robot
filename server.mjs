@@ -525,7 +525,7 @@ app.post("/api/tiktok/publish-url", async (req, res) => {
     if (!initResponse.ok || initBody?.error?.code !== "ok") {
       return res.status(initResponse.status || 502).json({
         error: "publish_init_failed",
-        tiktok: tiktokFailure(initResponse.status, initBody, "FILE_UPLOAD")
+        tiktok: tiktokFailure(initResponse.status, initBody, "PULL_FROM_URL")
       });
     }
 
