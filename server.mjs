@@ -445,12 +445,12 @@ app.post("/api/tiktok/upload-init", async (req, res) => {
   const MIN_CHUNK = 5 * 1024 * 1024;
   const MAX_CHUNK = 64 * 1024 * 1024;
   const MAX_FINAL_CHUNK = 128 * 1024 * 1024;
-  const expectedChunkCount = videoSize < MIN_CHUNK ? 1 : Math.floor(videoSize / chunkSize);
+  const expectedChunkCount = videoSize < MIN_CHUNK ? 1 : Math.ceil(videoSize / chunkSize);
   if (!Number.isSafeInteger(videoSize) || videoSize <= 0 ||
       !Number.isSafeInteger(chunkSize) || chunkSize <= 0 ||
       !Number.isSafeInteger(totalChunkCount) || totalChunkCount <= 0 ||
       (videoSize < MIN_CHUNK && (chunkSize !== videoSize || totalChunkCount !== 1)) ||
-      (videoSize >= MIN_CHUNK && (chunkSize < MIN_CHUNK || chunkSize > MAX_CHUNK || totalChunkCount !== expectedChunkCount))) {
+      (videoSize >= MIN_CHUNK && (chunkSize < MIN_CHUNK || chunkSize > MAX_CHUNK || totalChunkCount !== expectedChunkCount || totalChunkCount > 1000))) {
     return res.status(400).json({
       error: "upload_parameters_invalid",
       message: "Ukuran/chunk upload tidak memenuhi batas TikTok: file <5MB harus 1 chunk; file >=5MB memakai chunk 5-64MB dan total_chunk_count=floor(video_size/chunk_size)."
