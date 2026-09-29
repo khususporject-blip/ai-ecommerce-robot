@@ -135,7 +135,7 @@ async function ensureFreshSession(session) {
 // TikTok URL-prefix verification: TikTok supplies a fresh alphanumeric signature
 // filename for each verification attempt. Serve the exact token in the required body
 // format so a new verification attempt does not require another code deployment.
-app.get(/^\\/tiktok([A-Za-z0-9]{24,80})\\.txt$/, (req, res) => {
+app.get(/^\/tiktok([A-Za-z0-9]{24,80})\.txt$/, (req, res) => {
   const token = req.params[0];
   res.type("text/plain").send("tiktok-developers-site-verification=" + token);
 });
