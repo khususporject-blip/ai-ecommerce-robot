@@ -20,6 +20,7 @@ const TIKTOK_API = "https://open.tiktokapis.com/v2";
 const pendingStates = new Map();
 const sessions = new Map();
 const tasks = new Map();
+const uploadJobs = new Map();
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
@@ -342,16 +343,21 @@ function createTask(type, input = {}, status = "prepared") {
   return task;
 }
 
-app.get("/api/tasks", (_req, res) => {
-  res.json({ tasks: [...tasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100) });
+app.get("/api/tasks", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  res.json({ tasks: [...tasks.values()].filter((task) => task.openId === session.openId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100) });
 });
 
-app.post("/api/tasks", (req, res) => {
+app.post("/api/tasks", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
   const type = String(req.body?.type || "").trim();
   if (!/^(content|product_content|product_upload|sales|event)$/.test(type)) {
     return res.status(400).json({ error: "task_type_invalid" });
   }
   const task = createTask(type, req.body?.input || {});
+  task.openId = session.openId || null;
   res.status(201).json({ ok: true, task });
 });
 
@@ -360,6 +366,7 @@ app.post("/api/content/prepare", (req, res) => {
   const audience = String(req.body?.audience || "calon pembeli").trim().slice(0, 120);
   const offer = String(req.body?.offer || "").trim().slice(0, 160);
   const task = createTask("content", { product, audience, offer });
+  task.openId = null;
   const tag = product.replace(/[^A-Za-z0-9]/g, "").slice(0, 42) || "Produk";
   res.status(201).json({ ok: true, task, content: {
     hook: "Butuh " + product + " yang praktis untuk " + audience + "? Cek ini sebelum beli.",
@@ -435,12 +442,18 @@ app.post("/api/tiktok/upload-init", async (req, res) => {
   const chunkSize = Number(req.body?.chunk_size || videoSize);
   const totalChunkCount = Number(req.body?.total_chunk_count || 1);
 
+  const MIN_CHUNK = 5 * 1024 * 1024;
+  const MAX_CHUNK = 64 * 1024 * 1024;
+  const MAX_FINAL_CHUNK = 128 * 1024 * 1024;
+  const expectedChunkCount = videoSize < MIN_CHUNK ? 1 : Math.floor(videoSize / chunkSize);
   if (!Number.isSafeInteger(videoSize) || videoSize <= 0 ||
       !Number.isSafeInteger(chunkSize) || chunkSize <= 0 ||
-      !Number.isSafeInteger(totalChunkCount) || totalChunkCount <= 0) {
+      !Number.isSafeInteger(totalChunkCount) || totalChunkCount <= 0 ||
+      (videoSize < MIN_CHUNK && (chunkSize !== videoSize || totalChunkCount !== 1)) ||
+      (videoSize >= MIN_CHUNK && (chunkSize < MIN_CHUNK || chunkSize > MAX_CHUNK || totalChunkCount !== expectedChunkCount))) {
     return res.status(400).json({
       error: "upload_parameters_invalid",
-      message: "video_size, chunk_size, dan total_chunk_count harus berupa integer positif."
+      message: "Ukuran/chunk upload tidak memenuhi batas TikTok: file <5MB harus 1 chunk; file >=5MB memakai chunk 5-64MB dan total_chunk_count=floor(video_size/chunk_size)."
     });
   }
 
@@ -463,11 +476,27 @@ app.post("/api/tiktok/upload-init", async (req, res) => {
         tiktok: tiktokFailure(response.status, body, "FILE_UPLOAD")
       });
     }
+    const publishId = body.data?.publish_id || null;
+    const uploadUrl = body.data?.upload_url || null;
+    if (!publishId || !uploadUrl) {
+      return res.status(502).json({ error: "upload_init_invalid_response" });
+    }
+    const uploadId = randomToken(18);
+    uploadJobs.set(uploadId, {
+      uploadUrl,
+      publishId,
+      openId: session.openId || null,
+      videoSize,
+      chunkSize,
+      totalChunkCount,
+      createdAt: Date.now()
+    });
     res.status(202).json({
       ok: true,
       status: "upload_ready",
-      publish_id: body.data?.publish_id || null,
-      upload_url: body.data?.upload_url || null
+      upload_id: uploadId,
+      publish_id: publishId,
+      upload_url: uploadUrl
     });
   } catch (error) {
     res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
