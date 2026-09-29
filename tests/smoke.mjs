@@ -14,7 +14,7 @@ assert.match(server, /\/api\/tiktok\/publish-status/);
 assert.match(server, /\/api\/tiktok\/upload-init/);
 assert.match(server, /\/api\/content\/prepare/);
 assert.match(server, /\/api\/tasks/);
-assert.match(server, /tiktok\(\[A-Za-z0-9\]\{24,80\}\)/);\nassert.match(server, /PULL_FROM_URL/);
+assert.match(server, /app\.get\(\/\\^\\/tiktok/);\nassert.match(server, /PULL_FROM_URL/);
 assert.match(server, /timingSafeEqual/);
 assert.match(server, /HttpOnly/);
 assert.match(server, /SameSite=Lax/);
