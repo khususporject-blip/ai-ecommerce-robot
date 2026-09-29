@@ -366,7 +366,7 @@ app.post("/api/content/prepare", async (req, res) => {
   const audience = String(req.body?.audience || "calon pembeli").trim().slice(0, 120);
   const offer = String(req.body?.offer || "").trim().slice(0, 160);
   const task = createTask("content", { product, audience, offer });
-  task.openId = null;
+  task.openId = session.openId || null;
   const tag = product.replace(/[^A-Za-z0-9]/g, "").slice(0, 42) || "Produk";
   res.status(201).json({ ok: true, task, content: {
     hook: "Butuh " + product + " yang praktis untuk " + audience + "? Cek ini sebelum beli.",
