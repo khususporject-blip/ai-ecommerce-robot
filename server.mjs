@@ -136,6 +136,12 @@ app.get("/tiktokZZ2lwSDmYJCeNPKH1s59RZl3Qp6OU9AX.txt", (_req, res) => {
   res.type("text/plain").send("tiktok-developers-site-verification=ZZ2lwSDmYJCeNPKH1s59RZl3Qp6OU9AX");
 });
 
+// Latest TikTok URL-prefix verification signature observed in production HTTP logs.
+// The signature-file format matches the previously uploaded TikTok verification file: filename token == body token.
+app.get("/tiktok4uFaVKy7s3yLbcJVhBOpoIdTPfV0PebU.txt", (_req, res) => {
+  res.type("text/plain").send("tiktok-developers-site-verification=4uFaVKy7s3yLbcJVhBOpoIdTPfV0PebU");
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
