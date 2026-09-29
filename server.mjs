@@ -361,8 +361,8 @@ app.post("/api/tasks", async (req, res) => {
   res.status(201).json({ ok: true, task });
 });
 
-app.post("/api/content/prepare", (req, res) => {
-  const product = String(req.body?.product || "produk").trim().slice(0, 160);
+app.post("/api/content/prepare", async (req, res) => {
+  const session = await requireTikTokSession(req, res);\n  if (!session) return;\n  const product = String(req.body?.product || "produk").trim().slice(0, 160);
   const audience = String(req.body?.audience || "calon pembeli").trim().slice(0, 120);
   const offer = String(req.body?.offer || "").trim().slice(0, 160);
   const task = createTask("content", { product, audience, offer });
