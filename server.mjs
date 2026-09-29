@@ -503,6 +503,99 @@ app.post("/api/tiktok/upload-init", async (req, res) => {
   }
 });
 
+app.post("/api/tiktok/upload-chunk/:upload_id", express.raw({
+  type: ["video/mp4", "video/quicktime", "video/webm"],
+  limit: "128mb"
+}), async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+
+  const uploadId = String(req.params.upload_id || "").trim();
+  const job = uploadJobs.get(uploadId);
+  if (!job || job.openId !== session.openId) {
+    return res.status(404).json({ error: "upload_not_found" });
+  }
+
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    return res.status(400).json({ error: "chunk_body_required" });
+  }
+
+  const range = String(req.get("Content-Range") || "");
+  const match = /^bytes (\\d+)-(\\d+)\\/(\\d+)$/.exec(range);
+  if (!match) return res.status(400).json({ error: "content_range_invalid" });
+
+  const first = Number(match[1]);
+  const last = Number(match[2]);
+  const total = Number(match[3]);
+  const length = req.body.length;
+
+  if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) ||
+      !Number.isSafeInteger(total) || total !== job.videoSize ||
+      first < 0 || last < first || last - first + 1 !== length ||
+      last >= job.videoSize || first !== (job.nextByte || 0) ||
+      (job.chunkIndex || 0) >= job.totalChunkCount) {
+    return res.status(416).json({ error: "upload_range_invalid" });
+  }
+
+  const isFinal = last === job.videoSize - 1;
+  const MIN_CHUNK = 5 * 1024 * 1024;
+  const MAX_CHUNK = 64 * 1024 * 1024;
+  const MAX_FINAL_CHUNK = 128 * 1024 * 1024;
+  if ((!isFinal && (length < MIN_CHUNK || length > MAX_CHUNK)) ||
+      (isFinal && (length > MAX_FINAL_CHUNK || (job.totalChunkCount > 1 && length < MIN_CHUNK)))) {
+    return res.status(400).json({ error: "chunk_size_invalid" });
+  }
+
+  try {
+    const response = await fetch(job.uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": req.get("Content-Type") || "video/mp4",
+        "Content-Length": String(length),
+        "Content-Range": range
+      },
+      body: req.body
+    });
+    const body = await response.text().catch(() => "");
+
+    if (response.status !== 206 && response.status !== 201) {
+      return res.status(response.status >= 400 ? response.status : 502).json({
+        error: "tiktok_upload_failed",
+        status: response.status,
+        detail: response.status >= 500 ? "TikTok upload service error; retry the same chunk." : body.slice(0, 500)
+      });
+    }
+
+    job.nextByte = last + 1;
+    job.chunkIndex = (job.chunkIndex || 0) + 1;
+
+    if (response.status === 201) {
+      if (!isFinal || job.chunkIndex !== job.totalChunkCount) {
+        return res.status(502).json({ error: "tiktok_completed_before_expected_final_chunk" });
+      }
+      uploadJobs.delete(uploadId);
+      return res.status(201).json({
+        ok: true,
+        status: "upload_complete",
+        publish_id: job.publishId
+      });
+    }
+
+    if (isFinal || job.chunkIndex >= job.totalChunkCount) {
+      return res.status(502).json({ error: "tiktok_did_not_complete_final_chunk" });
+    }
+
+    res.status(206).json({
+      ok: true,
+      status: "chunk_uploaded",
+      next_byte: job.nextByte,
+      chunk_index: job.chunkIndex
+    });
+  } catch (error) {
+    res.status(502).json({ error: "tiktok_upload_unreachable", message: error?.message || String(error) });
+  }
+});
+
 app.post("/api/tiktok/publish-url", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
