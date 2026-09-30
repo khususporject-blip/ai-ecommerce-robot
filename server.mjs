@@ -549,16 +549,22 @@ app.post("/api/tiktok/upload-chunk/:upload_id", express.raw({
   }
 
   try {
-    const response = await fetch(job.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": req.get("Content-Type") || "video/mp4",
-        "Content-Length": String(length),
-        "Content-Range": range
-      },
-      body: req.body
-    });
-    const body = await response.text().catch(() => "");
+    let response;
+    let body = "";
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(job.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": req.get("Content-Type") || "video/mp4",
+          "Content-Length": String(length),
+          "Content-Range": range
+        },
+        body: req.body
+      });
+      body = await response.text().catch(() => "");
+      if (response.status < 500 && response.status !== 429) break;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (2 ** attempt)));
+    }
 
     if (response.status !== 206 && response.status !== 201) {
       return res.status(response.status >= 400 ? response.status : 502).json({
