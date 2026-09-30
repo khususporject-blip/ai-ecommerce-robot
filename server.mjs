@@ -523,7 +523,7 @@ app.post("/api/tiktok/upload-chunk/:upload_id", express.raw({
   }
 
   const range = String(req.get("Content-Range") || "");
-  const match = /^bytes (\\d+)-(\\d+)\\/(\\d+)$/.exec(range);
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(range);
   if (!match) return res.status(400).json({ error: "content_range_invalid" });
 
   const first = Number(match[1]);
