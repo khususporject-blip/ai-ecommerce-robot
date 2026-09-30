@@ -14,6 +14,16 @@ assert.match(server, /\/api\/tiktok\/publish-status/);
 assert.match(server, /\/api\/tiktok\/upload-init/);
 assert.match(server, /\/api\/content\/prepare/);
 assert.match(server, /\/api\/tasks/);
+assert.match(server, /\/api\/tiktok\/upload-chunk\/:upload_id/);
+assert.match(server, /Content-Range/);
+assert.match(server, /Content-Length/);
+assert.match(server, /totalChunkCount/);
+assert.match(server, /nextByte/);
+assert.match(server, /chunkIndex/);
+assert.match(server, /tiktok_completed_before_expected_final_chunk/);
+assert.match(server, /tiktok_did_not_complete_final_chunk/);
+assert.match(server, /task\.openId = session\.openId \|\| null/);
+
 assert.match(server, /app\.get\(\/\^/);
 assert.match(server, /tiktok\(\[A-Za-z0-9\]\{24,80\}\)/);
 assert.match(server, /\\\.txt\$\//);
