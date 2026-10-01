@@ -835,7 +835,7 @@ app.post("/api/robot/cycle", async (req, res) => {
       if (result.response.ok && Number(result.data?.code) === 0) products = tiktokShopClient.normalizeShopProducts(result.data);
     }
     const cycle = runAutonomousCycle({ ...req.body, products });
-    await businessMemory.set(`cycle-${session.openId || "unknown"}-${Date.now()}`, memoryRecord("autonomous_cycle", { objective: cycle.objective, products: products.length, experiments: cycle.experiments.length, next: cycle.next }));
+    try { await businessMemory.set(`cycle-${session.openId || "unknown"}-${Date.now()}`, memoryRecord("autonomous_cycle", { objective: cycle.objective, products: products.length, experiments: cycle.experiments.length, next: cycle.next })); } catch {}
     appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", policy: cycle.publish_policy.allowed ? "within_policy" : cycle.publish_policy.reasons.join(","), status: "SUCCESS", result: { products: products.length, experiments: cycle.experiments.length } }));
     res.json({ ok: true, cycle });
   } catch (error) {
