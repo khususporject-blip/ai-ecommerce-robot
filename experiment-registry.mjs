@@ -1,0 +1,4 @@
+const clean=(v,f="")=>String(v??f).trim().slice(0,500);
+export function createExperiment(input={}){const id=clean(input.id,`exp-${Date.now().toString(36)}`);return{id,product_id:clean(input.product_id),content_id:clean(input.content_id),hypothesis:clean(input.hypothesis),status:"PLANNED",created_at:new Date().toISOString(),metrics:{}};}
+export function updateExperiment(experiment={},metrics={}){const next={...experiment,metrics:{...experiment.metrics,...metrics},updated_at:new Date().toISOString()};const score=Number(metrics.score);if(Number.isFinite(score))next.status=score>=60?"ITERATE":score>=25?"TEST_VARIATION":"REWORK";return next;}
+export function rankExperiments(input={}){return(Array.isArray(input.experiments)?input.experiments:[]).slice(0,100).sort((a,b)=>(Number(b.metrics?.score)||0)-(Number(a.metrics?.score)||0));}
