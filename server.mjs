@@ -7,7 +7,9 @@ import { buildSalesPlan } from "./sales-brain.mjs";
 import { analyzePerformance } from "./performance-brain.mjs";
 import { buildProductIntelligence } from "./product-intelligence.mjs";
 import { buildContentFactory } from "./content-factory.mjs";
-import { autonomyPolicy } from "./autonomy-policy.mjs";
+import { autonomyPolicy, evaluateAction } from "./autonomy-policy.mjs";
+import { buildPerformanceInput, normalizeVideoList } from "./data-adapter.mjs";
+import { createAuditEntry, appendAudit } from "./audit-log.mjs";
 import { createExperiment, updateExperiment, rankExperiments } from "./experiment-registry.mjs";
 import { createTask as createEngineTask, nextTask, resolveTask } from "./task-engine.mjs";
 
@@ -28,6 +30,7 @@ const pendingStates = new Map();
 const sessions = new Map();
 const tasks = new Map();
 const uploadJobs = new Map();
+const auditLog = [];
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
