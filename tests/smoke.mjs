@@ -18,6 +18,8 @@ assert.match(server, /\/api\/sales\/analyze/);
 assert.match(server, /\/api\/product-intelligence/);
 assert.match(server, /\/api\/content\/factory/);
 assert.match(server, /\/api\/autonomy\/policy/);
+assert.match(server, /\/api\/experiments/);
+assert.match(server, /\/api\/tasks\/engine/);
 assert.match(server, /buildProductIntelligence/);
 assert.match(server, /buildContentFactory/);
 assert.match(server, /autonomyPolicy/);
