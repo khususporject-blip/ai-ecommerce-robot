@@ -32,6 +32,10 @@ assert.match(server, /timingSafeEqual/);
 assert.match(server, /HttpOnly/);
 assert.match(server, /SameSite=Lax/);
 assert.match(server, /escapeHtml/);
+assert.match(server, /MEMORY_CLEANUP_INTERVAL_MS/);
+assert.match(server, /TASK_RETENTION_MS/);
+assert.match(server, /UPLOAD_JOB_RETENTION_MS/);
+assert.match(server, /cleanupMemoryState/);
 assert.doesNotMatch(server, /TIKTOK_CLIENT_SECRET\s*=\s*["'][^"']+["']/);
 assert.equal(pkg.scripts.start, "node server.mjs");
 
