@@ -146,6 +146,12 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "robot-ai",
     oauthConfigured: Boolean(CLIENT_KEY && CLIENT_SECRET && REDIRECT_URI),
+    scopesConfigured: Boolean(process.env.TIKTOK_SCOPES),
+    deployment: {
+      commit: process.env.RAILWAY_GIT_COMMIT_SHA || null,
+      deploymentId: process.env.RAILWAY_DEPLOYMENT_ID || null,
+      environment: process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || null
+    },
     sessionStore: "memory"
   });
 });
