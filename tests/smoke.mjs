@@ -11,6 +11,7 @@ assert.match(server, /grant_type: "refresh_token"/);
 assert.match(server, /\/api\/tiktok\/creator-info/);
 assert.match(server, /\/api\/tiktok\/publish-url/);
 assert.match(server, /\/api\/tiktok\/publish-status/);
+assert.match(server, /\/api\/tiktok\/performance/);
 assert.match(server, /\/api\/tiktok\/upload-init/);
 assert.match(server, /\/api\/content\/prepare/);
 assert.match(server, /\/api\/sales\/plan/);
