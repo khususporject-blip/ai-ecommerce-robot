@@ -15,17 +15,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy to existing Railway service
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
-          if [ -n "$RAILWAY_TOKEN" ]; then
+          if [ -n "${{ secrets.RAILWAY_TOKEN }}" ]; then
             echo "Using project-scoped Railway token"
-            npx --yes @railway/cli up --ci --yes --project 46c9a399-4293-4e85-a4fa-1ec49d22c462 --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf --service 36152362-c2a4-4b92-a8a7-9a49da41d539
-          elif [ -n "$RAILWAY_API_TOKEN" ]; then
+            export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
+            unset RAILWAY_API_TOKEN
+          elif [ -n "${{ secrets.RAILWAY_API_TOKEN }}" ]; then
             echo "Using account/workspace Railway token"
-            npx --yes @railway/cli up --ci --yes --project 46c9a399-4293-4e85-a4fa-1ec49d22c462 --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf --service 36152362-c2a4-4b92-a8a7-9a49da41d539
+            export RAILWAY_API_TOKEN="${{ secrets.RAILWAY_API_TOKEN }}"
+            unset RAILWAY_TOKEN
           else
             echo "No Railway deployment token configured; refusing to claim production deployment."
             exit 1
           fi
+          npx --yes @railway/cli up --ci --yes --project 46c9a399-4293-4e85-a4fa-1ec49d22c462 --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf --service 36152362-c2a4-4b92-a8a7-9a49da41d539
