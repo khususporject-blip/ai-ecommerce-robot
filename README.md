@@ -64,4 +64,4 @@ The backend now contains the Direct Post request path using `PULL_FROM_URL`. Tik
 
 ## Deployment trigger
 
-This commit records the current production source state so the connected Railway GitHub service can consume the latest default-branch commit rather than an older deployment snapshot.
+Operational deployment note: Railway must deploy the current default-branch commit; a Railway "Redeploy" reuses the previous deployment snapshot and does not fetch a newer GitHub commit. After a source change, verify the active deployment commit and runtime health before treating the release as live.
