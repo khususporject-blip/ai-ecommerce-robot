@@ -31,6 +31,12 @@ Robot AI is being built as a sales brain for the owner's TikTok Shop operation, 
 - `POST /api/product-intelligence`: authenticated product intelligence endpoint.
 - `POST /api/content/factory`: authenticated content factory endpoint.
 - `POST /api/autonomy/policy`: authenticated autonomy policy endpoint.
+- `GET /api/shop/products` and `GET /api/shop/orders`: TikTok Shop Seller API adapters, gated by seller authorization credentials.
+- `GET /api/tiktok/performance`: TikTok Display API performance input using `video.list` when that scope is granted.
+- `POST /api/robot/cycle`: autonomous planning loop that connects product intelligence, sales plan, content factory, experiments, tasks, and policy.
+- `POST /api/autonomy/emergency-stop`: runtime emergency stop.
+- `POST /api/ai/generate`: optional LLM provider adapter; deterministic engines remain available without it.
+- `audit-log.mjs`, `data-adapter.mjs`, `tiktok-shop-client.mjs`, `autonomous-loop.mjs`: execution/data foundations.
 - `robot-agent.mjs`: sales-brain intent routing foundation.
 - Smoke tests cover the new sales endpoints.
 
@@ -40,11 +46,11 @@ TikTok Direct Post requires the approved and authorized `video.publish` scope. U
 
 ## Next engineering priorities
 
-1. Connect supported TikTok data sources to Product Intelligence and Performance Brain.
-2. Feed Product Intelligence into Sales Brain so product selection uses one normalized scoring engine.
-3. Replace in-memory business state with encrypted persistent storage.
-4. Build the Content Factory as a real generation/execution pipeline.
-5. Add experiment registry and automatic winner/loser iteration based on measured data.
-6. Enforce autonomy policy at every execution endpoint and add audit logging.
-7. Add TikTok Shop commerce data integration where an approved/available API supports it.
-8. Run end-to-end tests after TikTok approval and authorization.
+1. Complete Seller Center authorization and grant the minimum required Shop API scopes before live catalog/order execution.\n2. Connect supported TikTok data sources to Product Intelligence and Performance Brain.
+3. Feed Product Intelligence into Sales Brain so product selection uses one normalized scoring engine.
+4. Replace in-memory business state with encrypted persistent storage.
+5. Build the Content Factory as a real generation/execution pipeline.
+6. Add experiment registry and automatic winner/loser iteration based on measured data.
+7. Enforce autonomy policy at every execution endpoint and add audit logging.
+8. Add TikTok Shop commerce data integration where an approved/available API supports it.
+9. Run end-to-end tests after TikTok approval and authorization.\n\n## Current external gates\n\nThe codebase now contains the integration layers, but live TikTok Shop commerce execution still requires a Seller Center-authorized seller token, shop cipher, app credentials, and the corresponding Partner Center scopes. TikTok Shop documentation distinguishes seller authorization from creator authorization, and seller APIs use `x-tts-access-token`, signed requests, and `shop_cipher` where required. The public TikTok Content Posting/Display APIs are also separate from TikTok Shop Seller APIs.
