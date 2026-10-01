@@ -22,9 +22,15 @@ Robot AI is being built as a sales brain for the owner's TikTok Shop operation, 
 ## Current implementation
 
 - `sales-brain.mjs`: deterministic product opportunity scoring and sales-plan generation.
+- `product-intelligence.mjs`: normalized product opportunity scoring and ranking.
+- `content-factory.mjs`: repeatable hooks, angles, scripts, captions, CTAs, and experiment plans.
+- `autonomy-policy.mjs`: action limits, approval gates, and emergency-stop policy.
 - `performance-brain.mjs`: deterministic performance scoring and next-action recommendations.
 - `POST /api/sales/plan`: authenticated sales planning endpoint.
 - `POST /api/sales/analyze`: authenticated performance analysis endpoint.
+- `POST /api/product-intelligence`: authenticated product intelligence endpoint.
+- `POST /api/content/factory`: authenticated content factory endpoint.
+- `POST /api/autonomy/policy`: authenticated autonomy policy endpoint.
 - `robot-agent.mjs`: sales-brain intent routing foundation.
 - Smoke tests cover the new sales endpoints.
 
@@ -35,9 +41,10 @@ TikTok Direct Post requires the approved and authorized `video.publish` scope. U
 ## Next engineering priorities
 
 1. Connect supported TikTok data sources to Product Intelligence and Performance Brain.
-2. Replace in-memory business state with encrypted persistent storage.
-3. Build the Content Factory as a real generation/execution pipeline.
-4. Add experiment registry and automatic winner/loser iteration based on measured data.
-5. Add autonomy policy enforcement and audit logging.
-6. Add TikTok Shop commerce data integration where an approved/available API supports it.
-7. Run end-to-end tests after TikTok approval and authorization.
+2. Feed Product Intelligence into Sales Brain so product selection uses one normalized scoring engine.
+3. Replace in-memory business state with encrypted persistent storage.
+4. Build the Content Factory as a real generation/execution pipeline.
+5. Add experiment registry and automatic winner/loser iteration based on measured data.
+6. Enforce autonomy policy at every execution endpoint and add audit logging.
+7. Add TikTok Shop commerce data integration where an approved/available API supports it.
+8. Run end-to-end tests after TikTok approval and authorization.
