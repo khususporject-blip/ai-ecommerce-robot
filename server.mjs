@@ -697,6 +697,53 @@ app.post("/api/tiktok/upload-chunk/:upload_id", express.raw({
   }
 });
 
+app.get("/api/tiktok/performance", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  if (!String(session.scope || "").split(/[, ]+/).includes("video.list")) {
+    return res.status(403).json({ error: "video_list_scope_required", message: "Performance loop membutuhkan scope video.list dan otorisasi pengguna." });
+  }
+  try {
+    const response = await tiktokApi(session, "/video/list/?fields=id,title,create_time,view_count,like_count,comment_count,share_count", {
+      method: "POST",
+      body: JSON.stringify({ max_count: 20 })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.error?.code !== "ok") {
+      return res.status(response.status || 502).json({ error: "performance_fetch_failed", tiktok: tiktokFailure(response.status, body) });
+    }
+    const videos = normalizeVideoList(body.data?.videos || []);
+    const performance = buildPerformanceInput(videos);
+    const analysis = analyzePerformance(performance);
+    appendAudit(auditLog, createAuditEntry({
+      open_id: session.openId,
+      action: "read_performance",
+      target: "tiktok.video.list",
+      decision: "FETCH",
+      policy: "read_only",
+      status: "SUCCESS",
+      result: { count: videos.length }
+    }));
+    res.json({ ok: true, source: "tiktok_display_api", videos, analysis, cursor: body.data?.cursor ?? null, has_more: Boolean(body.data?.has_more) });
+  } catch (error) {
+    appendAudit(auditLog, createAuditEntry({
+      open_id: session.openId,
+      action: "read_performance",
+      target: "tiktok.video.list",
+      decision: "FETCH",
+      status: "ERROR",
+      error: error?.message || String(error)
+    }));
+    res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
+  }
+});
+
+app.get("/api/audit-log", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  res.json({ entries: auditLog.filter((entry) => entry.open_id === (session.openId || "")).slice(-100).reverse() });
+});
+
 app.post("/api/tiktok/publish-url", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
