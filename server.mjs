@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { planCommand } from "./robot-agent.mjs";
 import { buildSalesPlan } from "./sales-brain.mjs";
+import { analyzePerformance } from "./performance-brain.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -382,6 +383,18 @@ app.post("/api/content/prepare", async (req, res) => {
     caption: product + " untuk " + audience + ". " + (offer ? offer + " " : "") + "Lihat detail dan pilih sesuai kebutuhanmu.",
     hashtags: ["#TikTokShop", "#Rekomendasi", "#BelanjaOnline", "#" + tag]
   }});
+});
+
+app.post("/api/sales/analyze", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+
+  const analysis = analyzePerformance(req.body || {});
+  res.status(200).json({
+    ok: true,
+    account: { openId: session.openId || null },
+    analysis
+  });
 });
 
 app.post("/api/sales/plan", async (req, res) => {
