@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { planCommand } from "./robot-agent.mjs";
 import { buildSalesPlan } from "./sales-brain.mjs";
 import { analyzePerformance } from "./performance-brain.mjs";
+import { buildProductIntelligence } from "./product-intelligence.mjs";
+import { buildContentFactory } from "./content-factory.mjs";
+import { autonomyPolicy } from "./autonomy-policy.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -383,6 +386,24 @@ app.post("/api/content/prepare", async (req, res) => {
     caption: product + " untuk " + audience + ". " + (offer ? offer + " " : "") + "Lihat detail dan pilih sesuai kebutuhanmu.",
     hashtags: ["#TikTokShop", "#Rekomendasi", "#BelanjaOnline", "#" + tag]
   }});
+});
+
+app.post("/api/product-intelligence", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  res.json({ ok: true, account: { openId: session.openId || null }, intelligence: buildProductIntelligence(req.body || {}) });
+});
+
+app.post("/api/content/factory", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  res.json({ ok: true, account: { openId: session.openId || null }, content: buildContentFactory(req.body || {}) });
+});
+
+app.post("/api/autonomy/policy", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  res.json({ ok: true, account: { openId: session.openId || null }, policy: autonomyPolicy(req.body || {}) });
 });
 
 app.post("/api/sales/analyze", async (req, res) => {
