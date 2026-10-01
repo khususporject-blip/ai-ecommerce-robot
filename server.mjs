@@ -10,6 +10,8 @@ import { buildContentFactory } from "./content-factory.mjs";
 import { autonomyPolicy, evaluateAction } from "./autonomy-policy.mjs";
 import { buildPerformanceInput, normalizeVideoList } from "./data-adapter.mjs";
 import { createAuditEntry, appendAudit } from "./audit-log.mjs";
+import { tiktokShopClient } from "./tiktok-shop-client.mjs";
+import { runAutonomousCycle } from "./autonomous-loop.mjs";
 import { createExperiment, updateExperiment, rankExperiments } from "./experiment-registry.mjs";
 import { createTask as createEngineTask, nextTask, resolveTask } from "./task-engine.mjs";
 
@@ -162,7 +164,11 @@ app.get("/health", (_req, res) => {
       deploymentId: process.env.RAILWAY_DEPLOYMENT_ID || null,
       environment: process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || null
     },
-    sessionStore: "memory"
+    sessionStore: "memory",
+    capabilities: {
+      tiktok_shop_configured: Boolean(process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER),
+      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true"
+    }
   });
 });
 
@@ -735,6 +741,65 @@ app.get("/api/tiktok/performance", async (req, res) => {
       error: error?.message || String(error)
     }));
     res.status(502).json({ error: "tiktok_unreachable", message: error?.message || String(error) });
+  }
+});
+
+app.get("/api/shop/products", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  try {
+    const result = await tiktokShopClient.searchProducts({
+      status: req.query.status || "ACTIVATE",
+      page_token: req.query.page_token,
+      page_size: req.query.page_size,
+      locale: "id-ID"
+    });
+    if (!result.response.ok || Number(result.data?.code) !== 0) {
+      return res.status(result.response.status || 502).json({ error: "shop_products_failed", provider: result.data });
+    }
+    const products = tiktokShopClient.normalizeShopProducts(result.data);
+    appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "read_shop_products", target: "tiktok.shop.products", decision: "FETCH", policy: "read_only", status: "SUCCESS", result: { count: products.length } }));
+    res.json({ ok: true, products, next_page_token: result.data?.data?.next_page_token || null });
+  } catch (error) {
+    res.status(503).json({ error: "shop_api_not_configured_or_unreachable", message: error?.message || String(error) });
+  }
+});
+
+app.get("/api/shop/orders", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  try {
+    const result = await tiktokShopClient.searchOrders({
+      order_status: req.query.order_status,
+      page_token: req.query.page_token,
+      page_size: req.query.page_size
+    });
+    if (!result.response.ok || Number(result.data?.code) !== 0) {
+      return res.status(result.response.status || 502).json({ error: "shop_orders_failed", provider: result.data });
+    }
+    const orders = tiktokShopClient.normalizeOrders(result.data);
+    appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "read_shop_orders", target: "tiktok.shop.orders", decision: "FETCH", policy: "read_only", status: "SUCCESS", result: { count: orders.length } }));
+    res.json({ ok: true, orders, next_page_token: result.data?.data?.next_page_token || null });
+  } catch (error) {
+    res.status(503).json({ error: "shop_api_not_configured_or_unreachable", message: error?.message || String(error) });
+  }
+});
+
+app.post("/api/robot/cycle", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  try {
+    let products = Array.isArray(req.body?.products) ? req.body.products : [];
+    if (!products.length && process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER) {
+      const result = await tiktokShopClient.searchProducts({ status: "ACTIVATE", page_size: 100, locale: "id-ID" });
+      if (result.response.ok && Number(result.data?.code) === 0) products = tiktokShopClient.normalizeShopProducts(result.data);
+    }
+    const cycle = runAutonomousCycle({ ...req.body, products });
+    appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", policy: cycle.publish_policy.allowed ? "within_policy" : cycle.publish_policy.reasons.join(","), status: "SUCCESS", result: { products: products.length, experiments: cycle.experiments.length } }));
+    res.json({ ok: true, cycle });
+  } catch (error) {
+    appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", status: "ERROR", error: error?.message || String(error) }));
+    res.status(500).json({ error: "autonomous_cycle_failed", message: error?.message || String(error) });
   }
 });
 
