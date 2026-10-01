@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
+const scheduler = await fs.readFile(new URL("../autonomy-scheduler.mjs", import.meta.url), "utf8");
 
 assert.match(server, /v2\/auth\/authorize\//);
 assert.match(server, /v2\/oauth\/token\//);
@@ -19,6 +20,10 @@ assert.match(server, /\/api\/autonomy\/emergency-stop/);
 assert.match(server, /\/api\/ai\/generate/);
 assert.match(server, /tiktokShopClient/);
 assert.match(server, /runAutonomousCycle/);
+assert.match(server, /startAutonomyScheduler/);
+assert.match(server, /ROBOT_AUTONOMY_ENABLED/);
+assert.match(scheduler, /startAutonomyScheduler/);
+assert.match(scheduler, /source: "autonomous_scheduler"/);
 assert.match(server, /\/api\/tiktok\/upload-init/);
 assert.match(server, /\/api\/content\/prepare/);
 assert.match(server, /\/api\/sales\/plan/);
