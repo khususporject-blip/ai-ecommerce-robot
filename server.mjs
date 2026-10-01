@@ -12,6 +12,7 @@ import { buildPerformanceInput, normalizeVideoList } from "./data-adapter.mjs";
 import { createAuditEntry, appendAudit } from "./audit-log.mjs";
 import { tiktokShopClient } from "./tiktok-shop-client.mjs";
 import { runAutonomousCycle } from "./autonomous-loop.mjs";
+import { generateText, aiProviderStatus } from "./ai-provider.mjs";
 import { createExperiment, updateExperiment, rankExperiments } from "./experiment-registry.mjs";
 import { createTask as createEngineTask, nextTask, resolveTask } from "./task-engine.mjs";
 
@@ -33,6 +34,7 @@ const sessions = new Map();
 const tasks = new Map();
 const uploadJobs = new Map();
 const auditLog = [];
+const autonomyState = { emergency_stop: false };
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
@@ -167,7 +169,9 @@ app.get("/health", (_req, res) => {
     sessionStore: "memory",
     capabilities: {
       tiktok_shop_configured: Boolean(process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER),
-      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true"
+      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true",
+      ai_provider_configured: aiProviderStatus().configured,
+      emergency_stop: autonomyState.emergency_stop
     }
   });
 });
@@ -785,9 +789,42 @@ app.get("/api/shop/orders", async (req, res) => {
   }
 });
 
+app.get("/api/autonomy/status", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  res.json({ ok: true, emergency_stop: autonomyState.emergency_stop, ai_provider: aiProviderStatus() });
+});
+
+app.post("/api/autonomy/emergency-stop", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  autonomyState.emergency_stop = req.body?.enabled !== false;
+  appendAudit(auditLog, createAuditEntry({
+    open_id: session.openId,
+    action: "emergency_stop",
+    target: "robot-ai",
+    decision: autonomyState.emergency_stop ? "STOP" : "RESUME",
+    policy: "owner_control",
+    status: "APPLIED"
+  }));
+  res.json({ ok: true, emergency_stop: autonomyState.emergency_stop });
+});
+
+app.post("/api/ai/generate", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  const prompt = String(req.body?.prompt || "").trim();
+  if (!prompt) return res.status(400).json({ error: "prompt_required" });
+  const result = await generateText(prompt, req.body?.options || {});
+  if (!result.ok) return res.status(result.status || 503).json(result);
+  appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "ai_generate", target: "content_or_strategy", decision: "GENERATE", policy: "non_irreversible", status: "SUCCESS" }));
+  res.json(result);
+});
+
 app.post("/api/robot/cycle", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
+  if (autonomyState.emergency_stop) return res.status(423).json({ error: "emergency_stop_active" });
   try {
     let products = Array.isArray(req.body?.products) ? req.body.products : [];
     if (!products.length && process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER) {
