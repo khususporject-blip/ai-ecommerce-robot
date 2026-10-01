@@ -748,6 +748,17 @@ app.post("/api/tiktok/publish-url", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
 
+  const policy = evaluateAction("publish_content", { posts_today: Number(req.body?.posts_today || 0) });
+  appendAudit(auditLog, createAuditEntry({
+    open_id: session.openId,
+    action: "publish_content",
+    target: "tiktok.video",
+    decision: policy.allowed ? "ALLOW" : "BLOCK",
+    policy: policy.reasons.join(",") || "allowed",
+    status: policy.allowed ? "AUTHORIZED" : "BLOCKED"
+  }));
+  if (!policy.allowed) return res.status(403).json({ error: "autonomy_policy_blocked", policy });
+
   const videoUrl = String(req.body?.video_url || "").trim();
   const title = String(req.body?.title || "").trim();
   const privacyLevel = String(req.body?.privacy_level || "").trim();
