@@ -65,3 +65,9 @@ The backend now contains the Direct Post request path using `PULL_FROM_URL`. Tik
 ## Deployment trigger
 
 Operational deployment note: Railway must deploy the current default-branch commit; a Railway "Redeploy" reuses the previous deployment snapshot and does not fetch a newer GitHub commit. After a source change, verify the active deployment commit and runtime health before treating the release as live.
+
+## Full Autonomous Sales Brain
+
+The current main branch contains the autonomous sales foundation: Product Intelligence, Sales Brain, Content Factory, Performance Brain, Experiment Registry, Task Engine, business memory, audit logging, autonomy policy/emergency stop, TikTok Shop product/order adapters, TikTok video-performance ingestion, and the autonomous cycle orchestrator.
+
+Runtime capabilities remain data- and authorization-gated. The system must never fabricate product, inventory, conversion, revenue, or performance data. Commerce execution requires an authorized TikTok Shop seller data source; AI text generation requires an explicitly configured provider; TikTok creator execution requires the corresponding approved scopes and user authorization.
