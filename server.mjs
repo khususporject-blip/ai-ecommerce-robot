@@ -695,6 +695,30 @@ app.post("/api/assistant", (req, res) => {
 app.use(express.static(__dirname, { extensions: ["html"] }));
 app.use((_req, res) => res.status(404).send("Not found"));
 
+const MEMORY_CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+const TASK_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const UPLOAD_JOB_RETENTION_MS = 2 * 60 * 60 * 1000;
+
+function cleanupMemoryState() {
+  const now = Date.now();
+  for (const [state, expiresAt] of pendingStates) {
+    if (expiresAt <= now) pendingStates.delete(state);
+  }
+  for (const [sessionId, session] of sessions) {
+    if (!session?.createdAt || session.createdAt + 24 * 60 * 60 * 1000 <= now) sessions.delete(sessionId);
+  }
+  for (const [taskId, task] of tasks) {
+    const createdAt = Date.parse(task?.createdAt || "");
+    if (!Number.isFinite(createdAt) || createdAt + TASK_RETENTION_MS <= now) tasks.delete(taskId);
+  }
+  for (const [uploadId, job] of uploadJobs) {
+    if (!job?.createdAt || job.createdAt + UPLOAD_JOB_RETENTION_MS <= now) uploadJobs.delete(uploadId);
+  }
+}
+
+const memoryCleanupTimer = setInterval(cleanupMemoryState, MEMORY_CLEANUP_INTERVAL_MS);
+memoryCleanupTimer.unref?.();
+
 app.listen(port, () => {
   console.log(`Robot AI listening on port ${port}`);
 });
