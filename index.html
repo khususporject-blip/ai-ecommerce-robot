@@ -12,9 +12,9 @@
 <body>
 <header class="nav"><div class="brand"><div class="mark">R</div>Robot AI</div><nav class="links"><a href="#fitur">Fitur</a><a href="#cara-kerja">Cara kerja</a><a href="privacy.html">Privasi</a><a href="terms.html">Terms</a></nav><a class="login" href="/auth/tiktok">Masuk dengan TikTok</a></header>
 <main>
-<section class="hero"><div><div class="eyebrow">AI Shopping Assistant</div><h1>Belanja lebih cepat dengan Robot AI.</h1><p>Robot AI membantu pengguna mencari, memahami, dan membandingkan produk melalui percakapan sederhana. Semua kebutuhan belanja dirangkum dalam satu pengalaman yang praktis.</p><a class="cta" href="#cara-kerja">Lihat cara kerja</a></div>
+<section class="hero"><div><div class="eyebrow">AI Sales Brain</div><h1>Robot AI untuk menjalankan siklus jualan.</h1><p>Robot AI menyatukan perencanaan produk, pembuatan konten, eksperimen, pengukuran performa, dan optimasi. Eksekusi sensitif tetap dikendalikan oleh policy dan otorisasi akun.</p><a class="cta" href="#cara-kerja">Lihat cara kerja</a> <a class="cta" href="/auth/tiktok">Hubungkan TikTok</a></div>
 <div class="card"><div class="small">Contoh percakapan</div><div class="chat"><div class="msg bot">Halo! Saya Robot AI. Produk apa yang sedang kamu cari?</div><div class="msg user">Saya butuh headphone untuk kerja dan meeting.</div><div class="msg bot">Siap. Saya bisa bantu mempersempit pilihan berdasarkan budget, fitur, dan kebutuhan meeting.</div><div class="msg user">Budget sekitar Rp1 juta.</div><div class="msg bot">Oke. Saya akan fokus pada pilihan sekitar budget tersebut dan menjelaskan perbedaannya.</div><div class="input" id="assistantInput">Ketik kebutuhan belanja kamu…</div><div style="display:flex;gap:8px;margin-top:10px"><input id="command" aria-label="Perintah Robot AI" placeholder="Contoh: hubungkan TikTok" style="flex:1;border:1px solid #dddfe7;border-radius:10px;padding:11px"><button id="send" style="border:0;border-radius:10px;padding:11px 14px;font-weight:700">Kirim</button><button id="voice" title="Perintah suara" style="border:0;border-radius:10px;padding:11px 14px">🎙️</button></div><div id="assistantReply" class="small" style="margin-top:10px"></div></div></div></section>
-<section class="section" id="fitur"><h2>Yang bisa dilakukan Robot AI</h2><div class="grid"><article class="feature"><div>🔎</div><h3>Cari kebutuhan</h3><p>Pengguna menjelaskan kebutuhan dengan bahasa biasa, lalu Robot AI membantu menyusun kriteria pencarian.</p></article><article class="feature"><div>⚖️</div><h3>Bandingkan pilihan</h3><p>Ringkas perbedaan produk, fitur, dan pertimbangan pembelian agar pengguna lebih mudah memilih.</p></article><article class="feature"><div>🧠</div><h3>Asisten percakapan</h3><p>Pengalaman dibuat seperti berbicara dengan asisten pribadi, bukan sekadar mengisi formulir pencarian.</p></article></div></section>
+<section class="section" id="fitur"><h2>Mesin utama Robot AI</h2><div class="grid"><article class="feature"><div>🧠</div><h3>Sales Brain</h3><p>Prioritaskan produk, objective, audience, eksperimen, dan next action dari data yang tersedia.</p></article><article class="feature"><div>🎬</div><h3>Content Factory</h3><p>Bangun hook, angle, script, caption, CTA, dan eksperimen variasi secara sistematis.</p></article><article class="feature"><div>📈</div><h3>Performance Loop</h3><p>Ukur sinyal yang tersedia, catat hasil eksperimen, lalu tentukan iterasi berikutnya sesuai policy.</p></article></div></section>
 <section class="section" id="cara-kerja"><div class="card"><h2>Login dengan TikTok</h2><p class="small">Robot AI menggunakan TikTok Login Kit dengan OAuth 2.0. Authorization code ditukar oleh backend sehingga client secret dan token tidak pernah dikirim ke frontend.</p><a class="cta" href="/auth/tiktok">Continue with TikTok</a></div></section>
 </main>
 <script>
@@ -28,7 +28,14 @@ async function runCommand() {
     const response = await fetch("/api/assistant", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command:value})});
     const data = await response.json();
     reply.textContent = data.reply;
-    if (data.execute && data.path) window.location.href = data.path;
+    if (data.execute && data.path) return void (window.location.href = data.path);
+    const routes = { autonomous_cycle: ["/api/robot/cycle", "POST"], shop_products: ["/api/shop/products", "GET"], shop_orders: ["/api/shop/orders", "GET"], performance: ["/api/tiktok/performance", "GET"] };
+    if (routes[data.action]) {
+      const [url, method] = routes[data.action];
+      const result = await fetch(url, { method, headers: method === "POST" ? {"Content-Type":"application/json"} : undefined, body: method === "POST" ? JSON.stringify({}) : undefined });
+      const payload = await result.json().catch(() => ({}));
+      reply.textContent = result.ok ? JSON.stringify(payload.cycle || payload.analysis || payload.products || payload.orders || payload) : (payload.error || "Eksekusi belum tersedia.");
+    }
   } catch {
     reply.textContent = "Backend Robot AI belum tersedia di alamat ini.";
   }
