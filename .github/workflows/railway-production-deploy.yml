@@ -41,3 +41,5 @@ jobs:
           done
           echo "Production health check did not reach OK state."
           exit 1
+
+# Autonomous execution trigger: deploy the current main revision to the existing production service.
