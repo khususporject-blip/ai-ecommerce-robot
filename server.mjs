@@ -17,6 +17,7 @@ import { createExperiment, updateExperiment, rankExperiments } from "./experimen
 import { createTask as createEngineTask, nextTask, resolveTask } from "./task-engine.mjs";
 import { createMemoryStore, memoryRecord } from "./business-memory.mjs";
 import { createFileMemoryAdapter } from "./file-memory-adapter.mjs";
+import { startAutonomyScheduler } from "./autonomy-scheduler.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -969,6 +970,44 @@ function cleanupMemoryState() {
 
 const memoryCleanupTimer = setInterval(cleanupMemoryState, MEMORY_CLEANUP_INTERVAL_MS);
 memoryCleanupTimer.unref?.();
+
+const shopAutonomyConfigured = Boolean(
+  process.env.TTS_APP_KEY &&
+  process.env.TTS_APP_SECRET &&
+  process.env.TTS_ACCESS_TOKEN &&
+  process.env.TTS_SHOP_CIPHER
+);
+
+startAutonomyScheduler({
+  enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopAutonomyConfigured,
+  intervalMs: Number(process.env.ROBOT_AUTONOMY_INTERVAL_MS) || 60 * 60 * 1000,
+  loadProducts: async () => {
+    const result = await tiktokShopClient.searchProducts({ page_size: 100, status: "ACTIVATE" });
+    if (!result.response?.ok) throw new Error("tts_product_fetch_failed");
+    return tiktokShopClient.normalizeShopProducts(result.data);
+  },
+  runCycle: async ({ products, source }) => {
+    if (autonomyState.emergency_stop) return;
+    const cycle = runAutonomousCycle({
+      products,
+      objective: process.env.ROBOT_AUTONOMY_OBJECTIVE || "increase qualified sales opportunities",
+      audience: process.env.ROBOT_AUTONOMY_AUDIENCE || "TikTok Shop buyers"
+    });
+    try {
+      await businessMemory.set("autonomy:last_cycle", memoryRecord("autonomous_cycle", { source, cycle }));
+    } catch (error) {
+      console.error("Autonomy memory write failed:", error?.message || error);
+    }
+    appendAudit(auditLog, createAuditEntry({
+      actor: "autonomous_scheduler",
+      action: "autonomous_cycle",
+      target: "tiktok_shop",
+      decision: "execute_planning_cycle",
+      status: cycle.status,
+      result: { product_count: products.length }
+    }));
+  }
+});
 
 app.listen(port, () => {
   console.log(`Robot AI listening on port ${port}`);
