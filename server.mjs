@@ -15,6 +15,8 @@ import { runAutonomousCycle } from "./autonomous-loop.mjs";
 import { generateText, aiProviderStatus } from "./ai-provider.mjs";
 import { createExperiment, updateExperiment, rankExperiments } from "./experiment-registry.mjs";
 import { createTask as createEngineTask, nextTask, resolveTask } from "./task-engine.mjs";
+import { createMemoryStore, memoryRecord } from "./business-memory.mjs";
+import { createFileMemoryAdapter } from "./file-memory-adapter.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -35,6 +37,7 @@ const tasks = new Map();
 const uploadJobs = new Map();
 const auditLog = [];
 const autonomyState = { emergency_stop: false };
+const businessMemory = createMemoryStore(createFileMemoryAdapter());
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
@@ -832,6 +835,7 @@ app.post("/api/robot/cycle", async (req, res) => {
       if (result.response.ok && Number(result.data?.code) === 0) products = tiktokShopClient.normalizeShopProducts(result.data);
     }
     const cycle = runAutonomousCycle({ ...req.body, products });
+    await businessMemory.set(`cycle-${session.openId || "unknown"}-${Date.now()}`, memoryRecord("autonomous_cycle", { objective: cycle.objective, products: products.length, experiments: cycle.experiments.length, next: cycle.next }));
     appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", policy: cycle.publish_policy.allowed ? "within_policy" : cycle.publish_policy.reasons.join(","), status: "SUCCESS", result: { products: products.length, experiments: cycle.experiments.length } }));
     res.json({ ok: true, cycle });
   } catch (error) {
