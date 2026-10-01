@@ -8,6 +8,8 @@ import { analyzePerformance } from "./performance-brain.mjs";
 import { buildProductIntelligence } from "./product-intelligence.mjs";
 import { buildContentFactory } from "./content-factory.mjs";
 import { autonomyPolicy } from "./autonomy-policy.mjs";
+import { createExperiment, updateExperiment, rankExperiments } from "./experiment-registry.mjs";
+import { createTask as createEngineTask, nextTask, resolveTask } from "./task-engine.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -353,6 +355,41 @@ function createTask(type, input = {}, status = "prepared") {
   tasks.set(id, task);
   return task;
 }
+
+app.post("/api/experiments", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  const experiment = createExperiment(req.body || {});
+  experiment.open_id = session.openId || null;
+  const task = createTask("experiment", { experiment_id: experiment.id, hypothesis: experiment.hypothesis });
+  task.openId = session.openId || null;
+  res.status(201).json({ ok: true, experiment, task });
+});
+
+app.post("/api/experiments/analyze", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  const experiment = updateExperiment(req.body?.experiment || {}, req.body?.metrics || {});
+  experiment.open_id = session.openId || null;
+  res.json({ ok: true, experiment });
+});
+
+app.post("/api/tasks/engine", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  const task = createEngineTask(req.body || {});
+  task.open_id = session.openId || null;
+  res.status(201).json({ ok: true, task });
+});
+
+app.post("/api/tasks/engine/resolve", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  const task = resolveTask(req.body?.task || null, req.body?.error_code || null);
+  if (!task) return res.status(400).json({ error: "task_required" });
+  task.open_id = session.openId || null;
+  res.json({ ok: true, task });
+});
 
 app.get("/api/tasks", async (req, res) => {
   const session = await requireTikTokSession(req, res);
