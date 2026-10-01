@@ -7,6 +7,7 @@ on:
 
 jobs:
   deploy:
+    if: ${{ secrets.RAILWAY_TOKEN != '' || secrets.RAILWAY_API_TOKEN != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
