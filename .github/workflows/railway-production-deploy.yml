@@ -29,3 +29,14 @@ jobs:
             exit 1
           fi
           npx --yes @railway/cli up --ci --yes --project 46c9a399-4293-4e85-a4fa-1ec49d22c462 --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf --service 36152362-c2a4-4b92-a8a7-9a49da41d539
+          echo "Waiting for production health check..."
+          for i in $(seq 1 30); do
+            body=$(curl -fsS https://robot-ai-production-1fdb.up.railway.app/health || true)
+            if echo "$body" | grep -q '"status":"ok"'; then
+              echo "$body"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Production health check did not reach OK state."
+          exit 1
