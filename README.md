@@ -71,3 +71,6 @@ Operational deployment note: Railway must deploy the current default-branch comm
 The current main branch contains the autonomous sales foundation: Product Intelligence, Sales Brain, Content Factory, Performance Brain, Experiment Registry, Task Engine, business memory, audit logging, autonomy policy/emergency stop, TikTok Shop product/order adapters, TikTok video-performance ingestion, and the autonomous cycle orchestrator.
 
 Runtime capabilities remain data- and authorization-gated. The system must never fabricate product, inventory, conversion, revenue, or performance data. Commerce execution requires an authorized TikTok Shop seller data source; AI text generation requires an explicitly configured provider; TikTok creator execution requires the corresponding approved scopes and user authorization.
+
+
+<!-- production deployment trigger: 2026-10-01T17:51:11.514Z -->
