@@ -1,22 +1,8 @@
+import { scoreProduct } from "./product-intelligence.mjs";
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Number(value) || 0));
 
 function text(value, fallback = "") {
   return String(value ?? fallback).trim().slice(0, 500);
-}
-
-function scoreProduct(product = {}) {
-  const demand = clamp(product.demand_score);
-  const margin = clamp(product.margin_score);
-  const content = clamp(product.content_score);
-  const competition = clamp(product.competition_score);
-  const stock = clamp(product.stock_score);
-  return Math.round(
-    demand * 0.30 +
-    margin * 0.25 +
-    content * 0.20 +
-    stock * 0.15 +
-    (100 - competition) * 0.10
-  );
 }
 
 export function buildSalesPlan(input = {}) {
@@ -29,7 +15,7 @@ export function buildSalesPlan(input = {}) {
     .map((product, index) => ({
       id: text(product.id, `product-${index + 1}`),
       name: text(product.name, `Produk ${index + 1}`),
-      score: scoreProduct(product),
+      score: scoreProduct(product).opportunity_score,
       reason: [
         Number(product.demand_score) >= 70 ? "demand kuat" : null,
         Number(product.margin_score) >= 70 ? "margin menarik" : null,
