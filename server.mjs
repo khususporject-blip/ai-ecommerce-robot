@@ -39,6 +39,9 @@ const uploadJobs = new Map();
 const auditLog = [];
 const autonomyState = { emergency_stop: false };
 const businessMemory = createMemoryStore(createFileMemoryAdapter());
+const shopCredentialsConfigured = () => Boolean(
+  process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER
+);
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
@@ -172,8 +175,9 @@ app.get("/health", (_req, res) => {
     },
     sessionStore: "memory",
     capabilities: {
-      tiktok_shop_configured: Boolean(process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER),
-      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true",
+      tiktok_shop_configured: shopCredentialsConfigured(),
+      autonomous_loop_requested: process.env.ROBOT_AUTONOMY_ENABLED === "true",
+      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopCredentialsConfigured(),
       ai_provider_configured: aiProviderStatus().configured,
       emergency_stop: autonomyState.emergency_stop
     }
@@ -759,9 +763,10 @@ app.get("/api/shop/product-performance", async (req, res) => {
     const result = await tiktokShopClient.getProductPerformance({
       page_token: req.query.page_token,
       page_size: req.query.page_size,
-      start_date_ge: req.query.start_date_ge,
-      end_date_lt: req.query.end_date_lt,
-      granularity: req.query.granularity,
+      start_date: req.query.start_date,
+      end_date: req.query.end_date,
+      category_filter: req.query.category_filter ? String(req.query.category_filter).split(",").filter(Boolean) : undefined,
+      product_status_filter: req.query.product_status_filter,
       currency: req.query.currency
     });
     if (!result.response.ok || Number(result.data?.code) !== 0) {
@@ -878,9 +883,20 @@ app.post("/api/robot/cycle", async (req, res) => {
       const result = await tiktokShopClient.searchProducts({ status: "ACTIVATE", page_size: 100, locale: "id-ID" });
       if (result.response.ok && Number(result.data?.code) === 0) products = tiktokShopClient.normalizeShopProducts(result.data);
     }
-    const cycle = runAutonomousCycle({ ...req.body, products });
+    let performance = Array.isArray(req.body?.performance) ? req.body.performance : [];
+    if (!performance.length && shopCredentialsConfigured()) {
+      const analytics = await tiktokShopClient.getProductPerformance({
+        start_date: req.body?.start_date,
+        end_date: req.body?.end_date,
+        currency: req.body?.currency
+      });
+      if (analytics.response.ok && Number(analytics.data?.code) === 0) {
+        performance = tiktokShopClient.normalizeProductPerformance(analytics.data);
+      }
+    }
+    const cycle = runAutonomousCycle({ ...req.body, products, performance });
     try { await businessMemory.set(`cycle-${session.openId || "unknown"}-${Date.now()}`, memoryRecord("autonomous_cycle", { objective: cycle.objective, products: products.length, experiments: cycle.experiments.length, next: cycle.next })); } catch {}
-    appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", policy: cycle.publish_policy.allowed ? "within_policy" : cycle.publish_policy.reasons.join(","), status: "SUCCESS", result: { products: products.length, experiments: cycle.experiments.length } }));
+    appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", policy: cycle.publish_policy.allowed ? "within_policy" : cycle.publish_policy.reasons.join(","), status: "SUCCESS", result: { products: products.length, experiments: cycle.experiments.length, performance_items: performance.length } }));
     res.json({ ok: true, cycle });
   } catch (error) {
     appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "autonomous_cycle", target: "robot-ai", decision: "PLAN", status: "ERROR", error: error?.message || String(error) }));
@@ -1014,25 +1030,28 @@ function cleanupMemoryState() {
 const memoryCleanupTimer = setInterval(cleanupMemoryState, MEMORY_CLEANUP_INTERVAL_MS);
 memoryCleanupTimer.unref?.();
 
-const shopAutonomyConfigured = Boolean(
-  process.env.TTS_APP_KEY &&
-  process.env.TTS_APP_SECRET &&
-  process.env.TTS_ACCESS_TOKEN &&
-  process.env.TTS_SHOP_CIPHER
-);
+const shopAutonomyConfigured = shopCredentialsConfigured();
 
 startAutonomyScheduler({
   enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopAutonomyConfigured,
   intervalMs: Number(process.env.ROBOT_AUTONOMY_INTERVAL_MS) || 60 * 60 * 1000,
   loadProducts: async () => {
     const result = await tiktokShopClient.searchProducts({ page_size: 100, status: "ACTIVATE" });
-    if (!result.response?.ok) throw new Error("tts_product_fetch_failed");
+    if (!result.response?.ok || Number(result.data?.code) !== 0) throw new Error("tts_product_fetch_failed");
     return tiktokShopClient.normalizeShopProducts(result.data);
   },
   runCycle: async ({ products, source }) => {
     if (autonomyState.emergency_stop) return;
+    let performance = [];
+    try {
+      const analytics = await tiktokShopClient.getProductPerformance({ currency: "LOCAL" });
+      if (analytics.response.ok && Number(analytics.data?.code) === 0) performance = tiktokShopClient.normalizeProductPerformance(analytics.data);
+    } catch (error) {
+      console.error("Autonomy analytics fetch failed:", error?.message || error);
+    }
     const cycle = runAutonomousCycle({
       products,
+      performance,
       objective: process.env.ROBOT_AUTONOMY_OBJECTIVE || "increase qualified sales opportunities",
       audience: process.env.ROBOT_AUTONOMY_AUDIENCE || "TikTok Shop buyers"
     });
@@ -1047,7 +1066,7 @@ startAutonomyScheduler({
       target: "tiktok_shop",
       decision: "execute_planning_cycle",
       status: cycle.status,
-      result: { product_count: products.length }
+      result: { product_count: products.length, performance_items: performance.length }
     }));
   }
 });
