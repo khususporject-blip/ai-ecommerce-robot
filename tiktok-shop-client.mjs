@@ -112,10 +112,42 @@ export function normalizeOrders(data = {}) {
   })).filter((x) => x.id);
 }
 
+
+export async function getProductPerformance(input = {}) {
+  return ttsRequest("/analytics/202605/shop_products/performance", {
+    method: "GET",
+    query: {
+      page_size: Math.max(1, Math.min(100, Number(input.page_size) || 100)),
+      ...(input.page_token ? { page_token: String(input.page_token) } : {}),
+      ...(input.start_date_ge ? { start_date_ge: String(input.start_date_ge) } : {}),
+      ...(input.end_date_lt ? { end_date_lt: String(input.end_date_lt) } : {}),
+      ...(input.granularity ? { granularity: String(input.granularity) } : {}),
+      currency: input.currency === "USD" ? "USD" : "LOCAL"
+    }
+  });
+}
+
+export function normalizeProductPerformance(data = {}) {
+  const products = Array.isArray(data?.data?.products) ? data.data.products : [];
+  return products.map((product) => ({
+    product_id: String(product.product_id || product.id || ""),
+    product_name: String(product.product_name || product.title || ""),
+    total_performance: product.total_performance || {},
+    seller_live_performance: product.seller_live_performance || {},
+    seller_video_performance: product.seller_video_performance || {},
+    seller_product_card_performance: product.seller_product_card_performance || {},
+    affiliate_total_performance: product.affiliate_total_performance || {},
+    affiliate_live_performance: product.affiliate_live_performance || {},
+    affiliate_video_performance: product.affiliate_video_performance || {}
+  })).filter((x) => x.product_id);
+}
+
 export const tiktokShopClient = {
   version: "tts-open-api-202309",
   searchProducts,
   searchOrders,
   normalizeShopProducts,
-  normalizeOrders
+  normalizeOrders,
+  getProductPerformance,
+  normalizeProductPerformance
 };
