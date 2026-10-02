@@ -6,19 +6,28 @@ const APP_SECRET = process.env.TTS_APP_SECRET || "";
 const ACCESS_TOKEN = process.env.TTS_ACCESS_TOKEN || "";
 const SHOP_CIPHER = process.env.TTS_SHOP_CIPHER || "";
 
+function credentials(input = {}) {
+  return {
+    appKey: input.appKey || APP_KEY,
+    appSecret: input.appSecret || APP_SECRET,
+    accessToken: input.accessToken || ACCESS_TOKEN,
+    shopCipher: input.shopCipher || SHOP_CIPHER
+  };
+}
+
 function bodyText(body) {
   return body && Object.keys(body).length ? JSON.stringify(body) : "";
 }
 
-export function signRequest(path, query = {}, body = {}) {
-  if (!APP_SECRET) throw new Error("tts_app_secret_missing");
+export function signRequest(path, query = {}, body = {}, appSecret = APP_SECRET, appKey = APP_KEY) {
+  if (!appSecret) throw new Error("tts_app_secret_missing");
   const pairs = Object.entries(query)
     .filter(([key, value]) => key !== "sign" && value !== undefined && value !== null)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => key + String(value))
     .join("");
-  const payload = path + APP_KEY + pairs + bodyText(body);
-  return crypto.createHmac("sha256", APP_SECRET).update(payload).digest("hex");
+  const payload = path + appKey + pairs + bodyText(body);
+  return crypto.createHmac("sha256", appSecret).update(payload).digest("hex");
 }
 
 function buildUrl(path, query = {}) {
@@ -30,13 +39,18 @@ function buildUrl(path, query = {}) {
   return url;
 }
 
-export async function ttsRequest(path, { method = "POST", query = {}, body = {} } = {}) {
-  if (!APP_KEY || !APP_SECRET || !ACCESS_TOKEN || !SHOP_CIPHER) throw new Error("tts_configuration_missing");
-  const fullQuery = { ...query, shop_cipher: SHOP_CIPHER };
-  const url = buildUrl(path, fullQuery);
+export async function ttsRequest(path, { method = "POST", query = {}, body = {}, credentials: suppliedCredentials = {} } = {}) {
+  const auth = credentials(suppliedCredentials);
+  if (!auth.appKey || !auth.appSecret || !auth.accessToken || !auth.shopCipher) throw new Error("tts_configuration_missing");
+  const fullQuery = { ...query, shop_cipher: auth.shopCipher };
+  const timestamp = Math.floor(Date.now() / 1000);
+  const params = { ...fullQuery, app_key: auth.appKey, timestamp };
+  params.sign = signRequest(path, params, body, auth.appSecret, auth.appKey);
+  const url = new URL(path, BASE_URL);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
   const response = await fetch(url, {
     method,
-    headers: { "content-type": "application/json", "x-tts-access-token": ACCESS_TOKEN },
+    headers: { "content-type": "application/json", "x-tts-access-token": auth.accessToken },
     body: method === "GET" ? undefined : bodyText(body)
   });
   const data = await response.json().catch(() => ({}));
@@ -46,6 +60,7 @@ export async function ttsRequest(path, { method = "POST", query = {}, body = {} 
 export async function searchProducts(input = {}) {
   return ttsRequest("/product/202309/products/search", {
     method: "POST",
+    credentials: input.credentials,
     query: {
       page_size: Math.max(1, Math.min(100, Number(input.page_size) || 100)),
       ...(input.page_token ? { page_token: String(input.page_token) } : {}),
@@ -66,6 +81,7 @@ export async function searchProducts(input = {}) {
 export async function searchOrders(input = {}) {
   return ttsRequest("/order/202309/orders/search", {
     method: "POST",
+    credentials: input.credentials,
     query: {
       page_size: Math.max(1, Math.min(100, Number(input.page_size) || 100)),
       ...(input.page_token ? { page_token: String(input.page_token) } : {}),
@@ -116,6 +132,7 @@ export function normalizeOrders(data = {}) {
 export async function getProductPerformance(input = {}) {
   return ttsRequest("/analytics/202605/shop_products/performance", {
     method: "GET",
+    credentials: input.credentials,
     query: {
       page_size: Math.max(1, Math.min(100, Number(input.page_size) || 100)),
       ...(input.page_token ? { page_token: String(input.page_token) } : {}),
