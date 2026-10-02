@@ -44,7 +44,52 @@ const shopCredentialsConfigured = () => Boolean(
 );
 
 app.disable("x-powered-by");
+
+const requestBuckets = new Map();
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMITS = Object.freeze({
+  auth: 20,
+  api: 120,
+  publish: 12,
+  upload: 180
+});
+
+function clientKey(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket.remoteAddress || "unknown";
+}
+
+function rateLimit(bucket, limit) {
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = bucket + ":" + clientKey(req);
+    const entry = requestBuckets.get(key);
+    if (!entry || entry.resetAt <= now) {
+      requestBuckets.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > limit) {
+      res.setHeader("Retry-After", String(Math.max(1, Math.ceil((entry.resetAt - now) / 1000))));
+      return res.status(429).json({ error: "rate_limited", retry_after_seconds: Math.ceil((entry.resetAt - now) / 1000) });
+    }
+    next();
+  };
+}
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
 app.use(express.json({ limit: "100kb" }));
+app.use("/auth", rateLimit("auth", RATE_LIMITS.auth));
+app.use("/api/tiktok/publish-url", rateLimit("publish", RATE_LIMITS.publish));
+app.use("/api/tiktok/upload-init", rateLimit("upload", RATE_LIMITS.upload));
+app.use("/api/tiktok/upload-chunk", rateLimit("upload", RATE_LIMITS.upload));
+app.use("/api", rateLimit("api", RATE_LIMITS.api));
 
 function requireConfig(res) {
   if (!CLIENT_KEY || !CLIENT_SECRET || !REDIRECT_URI) {
@@ -722,9 +767,12 @@ app.get("/api/tiktok/performance", async (req, res) => {
     return res.status(403).json({ error: "video_list_scope_required", message: "Performance loop membutuhkan scope video.list dan otorisasi pengguna." });
   }
   try {
+    const cursor = Number(req.query.cursor);
+    const bodyRequest = { max_count: 20 };
+    if (Number.isSafeInteger(cursor) && cursor >= 0) bodyRequest.cursor = cursor;
     const response = await tiktokApi(session, "/video/list/?fields=id,title,create_time,view_count,like_count,comment_count,share_count", {
       method: "POST",
-      body: JSON.stringify({ max_count: 20 })
+      body: JSON.stringify(bodyRequest)
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.error?.code !== "ok") {
@@ -742,7 +790,7 @@ app.get("/api/tiktok/performance", async (req, res) => {
       status: "SUCCESS",
       result: { count: videos.length }
     }));
-    res.json({ ok: true, source: "tiktok_display_api", videos, analysis, cursor: body.data?.cursor ?? null, has_more: Boolean(body.data?.has_more) });
+    res.json({ ok: true, source: "tiktok_display_api", videos, analysis, cursor: body.data?.cursor ?? null, has_more: Boolean(body.data?.has_more), next_cursor: body.data?.cursor ?? null });
   } catch (error) {
     appendAudit(auditLog, createAuditEntry({
       open_id: session.openId,
@@ -960,7 +1008,10 @@ app.post("/api/tiktok/publish-url", async (req, res) => {
       body: JSON.stringify({
         post_info: {
           title: title.slice(0, 2200),
-          privacy_level: selectedPrivacy
+          privacy_level: selectedPrivacy,
+          ...(req.body?.brand_organic_toggle === true ? { brand_organic_toggle: true } : {}),
+          ...(req.body?.brand_content_toggle === true ? { brand_content_toggle: true } : {}),
+          ...(req.body?.is_aigc === true ? { is_aigc: true } : {})
         },
         source_info: {
           source: "PULL_FROM_URL",
