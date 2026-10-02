@@ -21,6 +21,8 @@ Robot AI is being built as a sales brain for TikTok Shop: product intelligence �
 - Emergency stop and action limits.
 - GitHub CI and a guarded Railway deployment workflow.
 - Production health endpoint exposes effective autonomy state instead of only the requested flag.
+- API security hardening: security headers, bounded JSON payloads, endpoint-aware in-memory rate limits, and publish metadata controls for organic-brand/AIGC declarations.
+- TikTok video performance ingestion supports cursor-based pagination.
 
 ## Runtime gates
 
@@ -61,6 +63,7 @@ These cannot be fabricated safely by code:
 3. Provider credentials/secrets that are not available to the project.
 4. Persistent storage infrastructure if long-lived business memory across restarts is required.
 5. Media generation/storage/CDN capability for fully automated video production; the current Content Factory produces structured content plans, not synthetic video files.
+6. Railway latest-commit deployment is currently externally gated: the GitHub deployment workflow can deploy when a Railway token is available, while the connected Railway service currently has no tool-accessible action to force the latest GitHub commit. Railway documents that “Deploy Latest Commit” or a specific commit deployment is distinct from redeploying the old deployment.
 
 ## Verification rule
 
