@@ -29,7 +29,7 @@ const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
 const REDIRECT_URI =
   process.env.TIKTOK_REDIRECT_URI ||
   (APP_BASE_URL ? `${APP_BASE_URL}/auth/tiktok/callback` : "");
-const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,user.info.profile";
+const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,video.publish,video.upload";
 const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
 const pendingStates = new Map();
