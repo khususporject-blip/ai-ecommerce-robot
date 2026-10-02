@@ -7,6 +7,7 @@ import { normalizeProductPerformance } from "../tiktok-shop-client.mjs";
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
 const scheduler = await fs.readFile(new URL("../autonomy-scheduler.mjs", import.meta.url), "utf8");
+const shopClient = await fs.readFile(new URL("../tiktok-shop-client.mjs", import.meta.url), "utf8");
 
 assert.match(server, /v2\/auth\/authorize\//);
 assert.match(server, /v2\/oauth\/token\//);
@@ -19,7 +20,7 @@ assert.match(server, /\/api\/tiktok\/performance/);
 assert.match(server, /\/api\/shop\/products/);
 assert.match(server, /\/api\/shop\/orders/);
 assert.match(server, /\/api\/shop\/product-performance/);
-assert.match(server, /analytics\/202605\/shop_products\/performance/);
+assert.match(shopClient, /analytics\/202605\/shop_products\/performance/);
 assert.match(server, /product_status_filter/);
 assert.match(server, /performance = tiktokShopClient\.normalizeProductPerformance/);
 assert.match(server, /\/api\/robot\/cycle/);
