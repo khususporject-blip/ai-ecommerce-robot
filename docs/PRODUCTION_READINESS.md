@@ -93,3 +93,5 @@ External runtime gates still outstanding:
 - Seller authorization requires the TikTok Shop app's `service_id`, seller authorization URL/region, and approved seller scopes. The app code is ready but cannot manufacture those account-side values.
 - Durable memory becomes genuinely durable when either an Upstash REST database is configured via `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`, or the existing Railway service is attached to a persistent volume and `BUSINESS_MEMORY_DIR` points at its mount. Railway documents that ordinary service filesystem storage is ephemeral while volumes persist across deployments.
 - Actual AI media/video generation still requires a media-generation provider or a supplied HTTPS media asset. Text/strategy generation is provider-backed through `AI_API_KEY`.
+
+<!-- Railway production sync probe: 2026-10-02 -->
