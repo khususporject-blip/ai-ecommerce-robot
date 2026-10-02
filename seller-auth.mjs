@@ -56,7 +56,9 @@ function sign(path, query) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => key + String(value))
     .join("");
-  return crypto.createHmac("sha256", APP_SECRET).update(path + APP_KEY + pairs).digest("hex");
+  const payload = path + pairs;
+  const wrapped = APP_SECRET + payload + APP_SECRET;
+  return crypto.createHmac("sha256", APP_SECRET).update(wrapped).digest("hex");
 }
 
 export async function getAuthorizedShops(accessToken) {
