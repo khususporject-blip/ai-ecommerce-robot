@@ -18,6 +18,9 @@ import { createTask as createEngineTask, nextTask, resolveTask } from "./task-en
 import { createMemoryStore, memoryRecord } from "./business-memory.mjs";
 import { createFileMemoryAdapter } from "./file-memory-adapter.mjs";
 import { startAutonomyScheduler } from "./autonomy-scheduler.mjs";
+import { sellerAuthStatus, buildSellerAuthorizeUrl, exchangeSellerCode, refreshSellerToken, getAuthorizedShops } from "./seller-auth.mjs";
+import { createUpstashMemoryAdapter, upstashMemoryConfigured } from "./upstash-memory-adapter.mjs";
+import { buildContentExecution } from "./content-executor.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -33,12 +36,14 @@ const SCOPES = process.env.TIKTOK_SCOPES || "user.info.basic,video.publish,video
 const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
 const pendingStates = new Map();
+const sellerStates = new Map();
+const sellerSessions = new Map();
 const sessions = new Map();
 const tasks = new Map();
 const uploadJobs = new Map();
 const auditLog = [];
 const autonomyState = { emergency_stop: false };
-const businessMemory = createMemoryStore(createFileMemoryAdapter());
+const businessMemory = createMemoryStore(upstashMemoryConfigured() ? createUpstashMemoryAdapter() : createFileMemoryAdapter());
 const shopCredentialsConfigured = () => Boolean(
   process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER
 );
@@ -223,13 +228,119 @@ app.get("/health", (_req, res) => {
       environment: process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || null
     },
     sessionStore: "memory",
+    businessMemory: {
+      backend: upstashMemoryConfigured() ? "upstash_redis" : "local_file",
+      durable: upstashMemoryConfigured(),
+      configured: upstashMemoryConfigured()
+    },
     capabilities: {
+      seller_authorization: sellerAuthStatus(),
+
       tiktok_shop_configured: shopCredentialsConfigured(),
       autonomous_loop_requested: process.env.ROBOT_AUTONOMY_ENABLED === "true",
       autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopCredentialsConfigured(),
       ai_provider_configured: aiProviderStatus().configured,
       emergency_stop: autonomyState.emergency_stop
     }
+  });
+});
+
+function sellerCredentials(session) {
+  return {
+    appKey: process.env.TTS_APP_KEY || "",
+    appSecret: process.env.TTS_APP_SECRET || "",
+    accessToken: session?.accessToken || process.env.TTS_ACCESS_TOKEN || "",
+    shopCipher: session?.shopCipher || process.env.TTS_SHOP_CIPHER || ""
+  };
+}
+
+async function requireSellerSession(req, res) {
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionId = cookies.robot_ai_seller_session;
+  const session = sellerSessions.get(sessionId);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now() && session.refreshToken) {
+    try {
+      const refreshed = await refreshSellerToken(session.refreshToken);
+      if (refreshed.response.ok && Number(refreshed.data?.code) === 0 && refreshed.data?.data?.access_token) {
+        const data = refreshed.data.data;
+        session.accessToken = data.access_token;
+        session.refreshToken = data.refresh_token || session.refreshToken;
+        session.expiresAt = Date.now() + Math.max(60, Number(data.access_token_expire_in || data.expires_in || 86400) - 300) * 1000;
+        session.grantedScopes = data.granted_scopes || session.grantedScopes;
+      }
+    } catch {}
+  }
+  if (session.expiresAt <= Date.now()) {
+    sellerSessions.delete(sessionId);
+    clearCookie(res, "robot_ai_seller_session");
+    return null;
+  }
+  return session;
+}
+
+app.get("/auth/tiktok-shop/seller", (req, res) => {
+  const state = randomToken(32);
+  sellerStates.set(state, Date.now() + 10 * 60 * 1000);
+  try {
+    const url = buildSellerAuthorizeUrl(state);
+    setCookie(res, "robot_ai_seller_state", state, 600);
+    res.redirect(url);
+  } catch (error) {
+    res.status(503).send(html("TikTok Shop Seller Authorization", `<h1>Seller authorization belum dikonfigurasi</h1><p class="err">${escapeHtml(error?.message || error)}</p>`));
+  }
+});
+
+app.get("/auth/tiktok-shop/callback", async (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const state = String(req.query.state || "");
+  const cookieState = cookies.robot_ai_seller_state;
+  clearCookie(res, "robot_ai_seller_state");
+  const expiresAt = sellerStates.get(state);
+  sellerStates.delete(state);
+  if (!sameToken(state, cookieState) || !expiresAt || expiresAt <= Date.now()) {
+    return res.status(400).send(html("TikTok Shop Seller Authorization", "<h1>Seller authorization gagal</h1><p class=\"err\">State OAuth tidak valid atau kedaluwarsa.</p>"));
+  }
+  if (req.query.error) {
+    return res.status(400).send(html("TikTok Shop Seller Authorization", `<h1>Seller authorization ditolak</h1><p class="err">${escapeHtml(req.query.error_description || req.query.error)}</p>`));
+  }
+  const code = String(req.query.code || "");
+  if (!code) return res.status(400).send(html("TikTok Shop Seller Authorization", "<h1>Authorization code tidak ada</h1>"));
+  try {
+    const tokenResult = await exchangeSellerCode(code);
+    const data = tokenResult.data?.data || {};
+    if (!tokenResult.response.ok || Number(tokenResult.data?.code) !== 0 || Number(data.user_type) !== 0 || !data.access_token) {
+      return res.status(tokenResult.response.status || 502).send(html("TikTok Shop Seller Authorization", `<h1>Seller token gagal</h1><pre>${escapeHtml(JSON.stringify({ code: tokenResult.data?.code, message: tokenResult.data?.message, user_type: data.user_type }, null, 2))}</pre>`));
+    }
+    const shopsResult = await getAuthorizedShops(data.access_token);
+    const shops = Array.isArray(shopsResult.data?.data?.shops) ? shopsResult.data.data.shops : [];
+    const shop = shops.find((x) => x.shop_cipher) || shops[0];
+    if (!shop?.shop_cipher) return res.status(502).send(html("TikTok Shop Seller Authorization", "<h1>Seller terotorisasi, tetapi shop_cipher tidak ditemukan.</h1>"));
+    const sessionId = randomToken(32);
+    sellerSessions.set(sessionId, {
+      createdAt: Date.now(),
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || null,
+      expiresAt: Date.now() + Math.max(60, Number(data.access_token_expire_in || data.expires_in || 86400) - 300) * 1000,
+      grantedScopes: data.granted_scopes || [],
+      shopCipher: shop.shop_cipher,
+      shopId: shop.shop_id || shop.id || null,
+      shopName: shop.shop_name || shop.name || null
+    });
+    setCookie(res, "robot_ai_seller_session", sessionId, 86400);
+    res.send(html("TikTok Shop Seller Connected", `<h1 class="ok">TikTok Shop Seller berhasil terhubung</h1><pre>${escapeHtml(JSON.stringify({ shop_name: shop.shop_name || shop.name || null, shop_id: shop.shop_id || shop.id || null, granted_scopes: data.granted_scopes || [] }, null, 2))}</pre><p>Token tidak ditampilkan.</p><p><a href="/">Kembali ke Robot AI</a></p>`));
+  } catch (error) {
+    res.status(502).send(html("TikTok Shop Seller Authorization", `<h1>Seller authorization error</h1><p class="err">${escapeHtml(error?.message || error)}</p>`));
+  }
+});
+
+app.get("/api/shop/authorization-status", async (req, res) => {
+  const session = await requireSellerSession(req, res);
+  res.json({
+    ok: true,
+    seller_authorization: sellerAuthStatus(),
+    connected: Boolean(session),
+    shop: session ? { shop_id: session.shopId, shop_name: session.shopName, granted_scopes: session.grantedScopes || [] } : null
   });
 });
 
@@ -812,6 +923,7 @@ app.get("/api/shop/product-performance", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
   try {
+    const sellerSession = await requireSellerSession(req, res);
     const result = await tiktokShopClient.getProductPerformance({
       page_token: req.query.page_token,
       page_size: req.query.page_size,
@@ -819,7 +931,8 @@ app.get("/api/shop/product-performance", async (req, res) => {
       end_date: req.query.end_date,
       category_filter: req.query.category_filter ? String(req.query.category_filter).split(",").filter(Boolean) : undefined,
       product_status_filter: req.query.product_status_filter,
-      currency: req.query.currency
+      currency: req.query.currency,
+      credentials: sellerCredentials(sellerSession)
     });
     if (!result.response.ok || Number(result.data?.code) !== 0) {
       return res.status(result.response.status || 502).json({
@@ -856,8 +969,10 @@ app.get("/api/shop/products", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
   try {
+    const sellerSession = await requireSellerSession(req, res);
     const result = await tiktokShopClient.searchProducts({
       status: req.query.status || "ACTIVATE",
+      credentials: sellerCredentials(sellerSession),
       page_token: req.query.page_token,
       page_size: req.query.page_size,
       locale: "id-ID"
@@ -877,8 +992,10 @@ app.get("/api/shop/orders", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
   try {
+    const sellerSession = await requireSellerSession(req, res);
     const result = await tiktokShopClient.searchOrders({
       order_status: req.query.order_status,
+      credentials: sellerCredentials(sellerSession),
       page_token: req.query.page_token,
       page_size: req.query.page_size
     });
@@ -912,6 +1029,47 @@ app.post("/api/autonomy/emergency-stop", async (req, res) => {
     status: "APPLIED"
   }));
   res.json({ ok: true, emergency_stop: autonomyState.emergency_stop });
+});
+
+app.post("/api/content/generate", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  const product = String(req.body?.product || "").trim().slice(0, 300);
+  if (!product) return res.status(400).json({ error: "product_required" });
+  const audience = String(req.body?.audience || "calon pembeli TikTok Shop").trim().slice(0, 200);
+  const factory = buildContentFactory({ product, audience, offer: req.body?.offer, variations: Math.min(5, Math.max(1, Number(req.body?.variations) || 5)) });
+  const prompt = [
+    "Buat paket konten TikTok Shop berdasarkan data yang diberikan.",
+    "Jangan mengarang harga, stok, manfaat, testimoni, atau hasil penjualan.",
+    "Kembalikan JSON valid dengan key experiments.",
+    JSON.stringify({ product, audience, factory })
+  ].join("\\n");
+  const ai = await generateText(prompt, { temperature: 0.7 });
+  appendAudit(auditLog, createAuditEntry({ open_id: session.openId, action: "content_generate", target: product, decision: ai.ok ? "GENERATE" : "FALLBACK", policy: "non_irreversible", status: ai.ok ? "SUCCESS" : "DEGRADED" }));
+  res.json({ ok: true, product, factory, ai });
+});
+
+app.post("/api/content/execute", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  if (autonomyState.emergency_stop) return res.status(423).json({ error: "emergency_stop_active" });
+  const execution = buildContentExecution(req.body || {});
+  if (!execution.ready) return res.status(400).json({ error: "content_execution_not_ready", execution });
+  const videoUrl = execution.media_url;
+  const creatorResponse = await tiktokApi(session, "/post/publish/creator_info/query/", { method: "POST", body: JSON.stringify({}) });
+  const creatorBody = await creatorResponse.json().catch(() => ({}));
+  if (!creatorResponse.ok || creatorBody?.error?.code !== "ok") return res.status(creatorResponse.status || 502).json({ error: "creator_info_failed", tiktok: creatorBody });
+  const options = creatorBody?.data?.privacy_level_options || [];
+  const privacyLevel = String(req.body?.privacy_level || "").trim() || options.find((value) => value === "SELF_ONLY") || options[0];
+  if (!privacyLevel || !options.includes(privacyLevel)) return res.status(400).json({ error: "privacy_level_invalid", allowed: options });
+  const initResponse = await tiktokApi(session, "/post/publish/video/init/", {
+    method: "POST",
+    body: JSON.stringify({ post_info: { title: execution.title, privacy_level: privacyLevel, ...(req.body?.is_aigc === true ? { is_aigc: true } : {}) }, source_info: { source: "PULL_FROM_URL", video_url: videoUrl } })
+  });
+  const initBody = await initResponse.json().catch(() => ({}));
+  if (!initResponse.ok || initBody?.error?.code !== "ok") return res.status(initResponse.status || 502).json({ error: "publish_init_failed", tiktok: tiktokFailure(initResponse.status, initBody, "PULL_FROM_URL") });
+  try { await businessMemory.set(`publish-${session.openId || "unknown"}-${Date.now()}`, memoryRecord("content_execution", { publish_id: initBody.data?.publish_id || null, video_url: videoUrl, title: execution.title })); } catch {}
+  res.status(202).json({ ok: true, execution, publish_id: initBody.data?.publish_id || null });
 });
 
 app.post("/api/ai/generate", async (req, res) => {
