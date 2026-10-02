@@ -92,3 +92,9 @@ assert.equal(analytics[0].signals.clicks, 100);
 assert.equal(analytics[0].signals.gmv, 123.45);
 
 console.log("Robot AI smoke checks passed.");
+
+assert.equal(typeof sellerAuthStatus, "function");
+assert.equal(typeof buildSellerAuthorizeUrl, "function");
+assert.equal(typeof upstashMemoryConfigured, "function");
+assert.equal(typeof createUpstashMemoryAdapter, "function");
+assert.equal(buildContentExecution({ video_url: "https://example.com/video.mp4", posts_today: 0 }).ready, true);
