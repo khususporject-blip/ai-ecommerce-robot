@@ -75,3 +75,21 @@ Every new capability must be represented by:
 5. audit logging for consequential execution.
 
 The system must never report a capability as live merely because its code exists.
+
+
+## Production gap closure — 2026-10-02
+
+Implemented in source:
+- Seller OAuth authorization flow: `/auth/tiktok-shop/seller` → callback → token exchange → authorized-shop discovery → seller session.
+- Seller credentials remain separate from TikTok creator Login Kit credentials.
+- TikTok Shop client now accepts per-seller credentials and uses the documented HMAC-SHA256 wrapping for signed API requests.
+- Durable-memory adapter path added for Upstash Redis REST; file memory remains the local fallback.
+- AI content generation endpoint: `POST /api/content/generate`.
+- Content execution endpoint: `POST /api/content/execute` for an HTTPS media URL using TikTok Direct Post.
+- Smoke coverage added for the new execution modules.
+
+External runtime gates still outstanding:
+- Railway production is still running commit `28e2c57fd5c99b1f292a596091d83898badfe112`; source `4089e77dbc810bd7364103e1916928b3ac093aa3` is newer and CI-green. Railway's current GitHub Action has no Railway token, so its deploy step is intentionally skipped.
+- Seller authorization requires the TikTok Shop app's `service_id`, seller authorization URL/region, and approved seller scopes. The app code is ready but cannot manufacture those account-side values.
+- Durable memory becomes genuinely durable when either an Upstash REST database is configured via `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`, or the existing Railway service is attached to a persistent volume and `BUSINESS_MEMORY_DIR` points at its mount. Railway documents that ordinary service filesystem storage is ephemeral while volumes persist across deployments.
+- Actual AI media/video generation still requires a media-generation provider or a supplied HTTPS media asset. Text/strategy generation is provider-backed through `AI_API_KEY`.
