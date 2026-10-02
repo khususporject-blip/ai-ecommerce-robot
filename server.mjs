@@ -44,6 +44,7 @@ const shopCredentialsConfigured = () => Boolean(
 );
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 
 const requestBuckets = new Map();
 const RATE_WINDOW_MS = 60_000;
@@ -55,8 +56,7 @@ const RATE_LIMITS = Object.freeze({
 });
 
 function clientKey(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return forwarded || req.socket.remoteAddress || "unknown";
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
 function rateLimit(bucket, limit) {
@@ -90,6 +90,10 @@ app.use("/api/tiktok/publish-url", rateLimit("publish", RATE_LIMITS.publish));
 app.use("/api/tiktok/upload-init", rateLimit("upload", RATE_LIMITS.upload));
 app.use("/api/tiktok/upload-chunk", rateLimit("upload", RATE_LIMITS.upload));
 app.use("/api", rateLimit("api", RATE_LIMITS.api));
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of requestBuckets) if (entry.resetAt <= now) requestBuckets.delete(key);
+}, RATE_WINDOW_MS).unref?.();
 
 function requireConfig(res) {
   if (!CLIENT_KEY || !CLIENT_SECRET || !REDIRECT_URI) {
