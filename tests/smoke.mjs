@@ -3,6 +3,9 @@ import fs from "node:fs/promises";
 import { scoreProduct } from "../product-intelligence.mjs";
 import { analyzePerformance } from "../performance-brain.mjs";
 import { normalizeProductPerformance } from "../tiktok-shop-client.mjs";
+import { sellerAuthStatus, buildSellerAuthorizeUrl } from "../seller-auth.mjs";
+import { upstashMemoryConfigured, createUpstashMemoryAdapter } from "../upstash-memory-adapter.mjs";
+import { buildContentExecution } from "../content-executor.mjs";
 
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
