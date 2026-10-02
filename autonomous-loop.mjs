@@ -27,11 +27,13 @@ function enrichProducts(products, performance) {
       ? Math.max(0, Math.min(100, Number(match.signals.click_order_rate) * 100))
       : null;
     const customerScore = percentileScore(Number(match.signals?.estimated_customers), customers);
+    const combinedDemand = demandScore !== null && customerScore !== null
+      ? Math.round(demandScore * 0.6 + customerScore * 0.4)
+      : demandScore ?? customerScore;
     return {
       ...product,
-      ...(demandScore !== null ? { demand_score: demandScore } : {}),
-      ...(conversionScore !== null ? { content_score: conversionScore } : {}),
-      ...(customerScore !== null ? { demand_score: Math.round((demandScore ?? customerScore) * 0.6 + customerScore * 0.4) } : {})
+      ...(combinedDemand !== null ? { demand_score: combinedDemand } : {}),
+      ...(conversionScore !== null ? { content_score: conversionScore } : {})
     };
   });
 }
