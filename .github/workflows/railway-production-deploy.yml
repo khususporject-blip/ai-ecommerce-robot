@@ -7,7 +7,6 @@ on:
 
 jobs:
   deploy:
-    if: ${{ secrets.RAILWAY_TOKEN != '' || secrets.RAILWAY_API_TOKEN != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -15,21 +14,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy to existing Railway service
+      - name: Detect Railway credentials
+        id: auth
+        shell: bash
+        env:
+          PROJECT_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          ACCOUNT_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
-          if [ -n "${{ secrets.RAILWAY_TOKEN }}" ]; then
-            echo "Using project-scoped Railway token"
-            export RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}"
-            unset RAILWAY_API_TOKEN
-          elif [ -n "${{ secrets.RAILWAY_API_TOKEN }}" ]; then
-            echo "Using account/workspace Railway token"
-            export RAILWAY_API_TOKEN="${{ secrets.RAILWAY_API_TOKEN }}"
-            unset RAILWAY_TOKEN
+          if [ -n "$PROJECT_TOKEN" ] || [ -n "$ACCOUNT_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No Railway deployment token configured; refusing to claim production deployment."
-            exit 1
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Railway deployment credentials are not configured; deployment step will be skipped safely."
           fi
-          npx --yes @railway/cli up --ci --yes --project 46c9a399-4293-4e85-a4fa-1ec49d22c462 --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf --service 36152362-c2a4-4b92-a8a7-9a49da41d539
+
+      - name: Deploy to existing Railway service
+        if: steps.auth.outputs.configured == 'true'
+        env:
+          PROJECT_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          ACCOUNT_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          if [ -n "$PROJECT_TOKEN" ]; then
+            export RAILWAY_TOKEN="$PROJECT_TOKEN"
+            unset RAILWAY_API_TOKEN
+          else
+            export RAILWAY_API_TOKEN="$ACCOUNT_TOKEN"
+            unset RAILWAY_TOKEN
+          fi
+          npx --yes @railway/cli up --ci --yes             --project 46c9a399-4293-4e85-a4fa-1ec49d22c462             --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf             --service 36152362-c2a4-4b92-a8a7-9a49da41d539
           echo "Waiting for production health check..."
           for i in $(seq 1 30); do
             body=$(curl -fsS https://robot-ai-production-1fdb.up.railway.app/health || true)
@@ -42,4 +54,8 @@ jobs:
           echo "Production health check did not reach OK state."
           exit 1
 
-# Autonomous execution trigger: deploy the current main revision to the existing production service.
+      - name: Report deployment gate
+        if: steps.auth.outputs.configured != 'true'
+        run: |
+          echo "Production deployment is intentionally gated because no Railway token is available to this workflow."
+          echo "Source code and CI remain authoritative; no deployment is claimed."
