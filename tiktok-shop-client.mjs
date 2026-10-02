@@ -26,8 +26,9 @@ export function signRequest(path, query = {}, body = {}, appSecret = APP_SECRET,
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => key + String(value))
     .join("");
-  const payload = path + appKey + pairs + bodyText(body);
-  return crypto.createHmac("sha256", appSecret).update(payload).digest("hex");
+  const payload = path + pairs + bodyText(body);
+  const wrapped = appSecret + payload + appSecret;
+  return crypto.createHmac("sha256", appSecret).update(wrapped).digest("hex");
 }
 
 function buildUrl(path, query = {}) {
