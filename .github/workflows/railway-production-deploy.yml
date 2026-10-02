@@ -33,7 +33,7 @@ jobs:
           echo "Waiting for production health check..."
           for i in $(seq 1 30); do
             body=$(curl -fsS https://robot-ai-production-1fdb.up.railway.app/health || true)
-            if echo "$body" | grep -q '"status":"ok"'; then
+            if echo "$body" | grep -q '"ok":true'; then
               echo "$body"
               exit 0
             fi
