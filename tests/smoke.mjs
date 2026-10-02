@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { scoreProduct } from "../product-intelligence.mjs";
+import { analyzePerformance } from "../performance-brain.mjs";
+import { normalizeProductPerformance } from "../tiktok-shop-client.mjs";
 
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -15,6 +18,10 @@ assert.match(server, /\/api\/tiktok\/publish-status/);
 assert.match(server, /\/api\/tiktok\/performance/);
 assert.match(server, /\/api\/shop\/products/);
 assert.match(server, /\/api\/shop\/orders/);
+assert.match(server, /\/api\/shop\/product-performance/);
+assert.match(server, /analytics\/202605\/shop_products\/performance/);
+assert.match(server, /product_status_filter/);
+assert.match(server, /performance = tiktokShopClient\.normalizeProductPerformance/);
 assert.match(server, /\/api\/robot\/cycle/);
 assert.match(server, /\/api\/autonomy\/emergency-stop/);
 assert.match(server, /\/api\/ai\/generate/);
@@ -34,6 +41,8 @@ assert.match(server, /\/api\/autonomy\/policy/);
 assert.match(server, /\/api\/experiments/);
 assert.match(server, /\/api\/tasks\/engine/);
 assert.match(server, /buildProductIntelligence/);
+assert.match(server, /shopCredentialsConfigured/);
+assert.match(server, /autonomous_loop_requested/);
 assert.match(server, /buildContentFactory/);
 assert.match(server, /autonomyPolicy/);
 assert.match(server, /buildSalesPlan/);
@@ -63,5 +72,17 @@ assert.match(server, /UPLOAD_JOB_RETENTION_MS/);
 assert.match(server, /cleanupMemoryState/);
 assert.doesNotMatch(server, /TIKTOK_CLIENT_SECRET\s*=\s*["'][^"']+["']/);
 assert.equal(pkg.scripts.start, "node server.mjs");
+
+const missingSignals = scoreProduct({ id: "p1", name: "No Data" });
+assert.equal(missingSignals.opportunity_score, null);
+const stockOnly = scoreProduct({ id: "p2", stock_score: 80 });
+assert.equal(stockOnly.opportunity_score, 80);
+const perf = analyzePerformance({ items: [{ id: "v1", views: 1000, likes: 100, comments: 20, shares: 10, conversions: 10 }] });
+assert.equal(perf.items[0].conversion_rate, 1);
+assert.ok(perf.items[0].score > 0 && perf.items[0].score < 100);
+const analytics = normalizeProductPerformance({ data: { products: [{ id: "p1", title: "Demo", total_performance: { product_impressions: 1000, product_clicks: 100, click_order_rate: "0.08", estimated_customers: 5, gmv_incl_tax: { amount: "123.45" } } }] } });
+assert.equal(analytics[0].signals.impressions, 1000);
+assert.equal(analytics[0].signals.clicks, 100);
+assert.equal(analytics[0].signals.gmv, 123.45);
 
 console.log("Robot AI smoke checks passed.");
