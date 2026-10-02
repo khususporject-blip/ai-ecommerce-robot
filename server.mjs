@@ -752,6 +752,49 @@ app.get("/api/tiktok/performance", async (req, res) => {
   }
 });
 
+app.get("/api/shop/product-performance", async (req, res) => {
+  const session = await requireTikTokSession(req, res);
+  if (!session) return;
+  try {
+    const result = await tiktokShopClient.getProductPerformance({
+      page_token: req.query.page_token,
+      page_size: req.query.page_size,
+      start_date_ge: req.query.start_date_ge,
+      end_date_lt: req.query.end_date_lt,
+      granularity: req.query.granularity,
+      currency: req.query.currency
+    });
+    if (!result.response.ok || Number(result.data?.code) !== 0) {
+      return res.status(result.response.status || 502).json({
+        error: "shop_product_performance_failed",
+        provider: result.data
+      });
+    }
+    const performance = tiktokShopClient.normalizeProductPerformance(result.data);
+    appendAudit(auditLog, createAuditEntry({
+      open_id: session.openId,
+      action: "read_shop_product_performance",
+      target: "tiktok.shop.analytics.202605.shop_products",
+      decision: "FETCH",
+      policy: "read_only",
+      status: "SUCCESS",
+      result: { count: performance.length }
+    }));
+    res.json({
+      ok: true,
+      source: "tiktok_shop_analytics_202605",
+      performance,
+      next_page_token: result.data?.data?.next_page_token || null,
+      data_date: result.data?.data?.data_date || null
+    });
+  } catch (error) {
+    res.status(503).json({
+      error: "shop_analytics_not_configured_or_unreachable",
+      message: error?.message || String(error)
+    });
+  }
+});
+
 app.get("/api/shop/products", async (req, res) => {
   const session = await requireTikTokSession(req, res);
   if (!session) return;
