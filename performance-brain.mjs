@@ -10,7 +10,8 @@ export function analyzePerformance(input = {}) {
     const conversions = Math.max(0, Number(item.conversions) || 0);
     const engagement = views ? ((likes + comments + shares) / views) * 100 : 0;
     const conversionRate = views ? (conversions / views) * 100 : 0;
-    const score = clamp(engagement * 0.55 + conversionRate * 100 * 0.45);
+    const conversionScore = clamp(conversionRate * 10);
+    const score = clamp(engagement * 0.55 + conversionScore * 0.45);
     return {
       id: String(item.id ?? `content-${index + 1}`),
       title: String(item.title ?? ""),
@@ -23,7 +24,7 @@ export function analyzePerformance(input = {}) {
   }).sort((a, b) => b.score - a.score);
 
   return {
-    version: "performance-brain-v1",
+    version: "performance-brain-v2",
     status: items.length ? "ANALYZED" : "WAITING_FOR_DATA",
     items: analyzed,
     next_actions: items.length
