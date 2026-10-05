@@ -21,6 +21,7 @@ import { startAutonomyScheduler } from "./autonomy-scheduler.mjs";
 import { sellerAuthStatus, buildSellerAuthorizeUrl, exchangeSellerCode, refreshSellerToken, getAuthorizedShops } from "./seller-auth.mjs";
 import { createUpstashMemoryAdapter, upstashMemoryConfigured } from "./upstash-memory-adapter.mjs";
 import { buildContentExecution } from "./content-executor.mjs";
+import { createPersistentSellerSessionStore } from "./seller-session-store.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -37,7 +38,7 @@ const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
 const pendingStates = new Map();
 const sellerStates = new Map();
-const sellerSessions = new Map();
+const sellerSessions = createPersistentSellerSessionStore();
 const sessions = new Map();
 const tasks = new Map();
 const uploadJobs = new Map();
@@ -257,7 +258,7 @@ function sellerCredentials(session) {
 async function requireSellerSession(req, res) {
   const cookies = parseCookies(req.headers.cookie);
   const sessionId = cookies.robot_ai_seller_session;
-  const session = sellerSessions.get(sessionId);
+  const session = await sellerSessions.get(sessionId);
   if (!session) return null;
   if (session.expiresAt <= Date.now() && session.refreshToken) {
     try {
@@ -272,7 +273,7 @@ async function requireSellerSession(req, res) {
     } catch {}
   }
   if (session.expiresAt <= Date.now()) {
-    sellerSessions.delete(sessionId);
+    await sellerSessions.delete(sessionId);
     clearCookie(res, "robot_ai_seller_session");
     return null;
   }
@@ -317,7 +318,7 @@ app.get("/auth/tiktok-shop/callback", async (req, res) => {
     const shop = shops.find((x) => x.shop_cipher) || shops[0];
     if (!shop?.shop_cipher) return res.status(502).send(html("TikTok Shop Seller Authorization", "<h1>Seller terotorisasi, tetapi shop_cipher tidak ditemukan.</h1>"));
     const sessionId = randomToken(32);
-    sellerSessions.set(sessionId, {
+    await sellerSessions.set(sessionId, {
       createdAt: Date.now(),
       accessToken: data.access_token,
       refreshToken: data.refresh_token || null,
