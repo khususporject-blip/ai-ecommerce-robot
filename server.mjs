@@ -45,8 +45,9 @@ const uploadJobs = new Map();
 const auditLog = [];
 const autonomyState = { emergency_stop: false };
 const businessMemory = createMemoryStore(upstashMemoryConfigured() ? createUpstashMemoryAdapter() : createFileMemoryAdapter());
+const shopAppConfigured = () => Boolean(process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET);
 const shopCredentialsConfigured = () => Boolean(
-  process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER
+  shopAppConfigured() && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER
 );
 
 app.disable("x-powered-by");
@@ -228,11 +229,11 @@ app.get("/health", (_req, res) => {
       deploymentId: process.env.RAILWAY_DEPLOYMENT_ID || null,
       environment: process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || null
     },
-    sessionStore: "memory",
+    sessionStore: "persistent_encrypted",
     businessMemory: {
       backend: upstashMemoryConfigured() ? "upstash_redis" : "local_file",
-      durable: upstashMemoryConfigured(),
-      configured: upstashMemoryConfigured()
+      durable: upstashMemoryConfigured() || Boolean(process.env.BUSINESS_MEMORY_DIR),
+      configured: upstashMemoryConfigured() || Boolean(process.env.BUSINESS_MEMORY_DIR)
     },
     capabilities: {
       seller_authorization: sellerAuthStatus(),
@@ -280,6 +281,30 @@ async function requireSellerSession(req, res) {
   return session;
 }
 
+async function getPrimarySellerSession() {
+  if (!shopAppConfigured()) return null;
+  const session = await sellerSessions.get("primary");
+  if (!session) return null;
+  if (session.expiresAt <= Date.now() && session.refreshToken) {
+    try {
+      const refreshed = await refreshSellerToken(session.refreshToken);
+      if (refreshed.response.ok && Number(refreshed.data?.code) === 0 && refreshed.data?.data?.access_token) {
+        const data = refreshed.data.data;
+        session.accessToken = data.access_token;
+        session.refreshToken = data.refresh_token || session.refreshToken;
+        session.expiresAt = Date.now() + Math.max(60, Number(data.access_token_expire_in || data.expires_in || 86400) - 300) * 1000;
+        session.grantedScopes = data.granted_scopes || session.grantedScopes;
+        await sellerSessions.set("primary", session);
+      }
+    } catch {}
+  }
+  if (session.expiresAt <= Date.now()) {
+    await sellerSessions.delete("primary");
+    return null;
+  }
+  return session;
+}
+
 app.get("/auth/tiktok-shop/seller", (req, res) => {
   const state = randomToken(32);
   sellerStates.set(state, Date.now() + 10 * 60 * 1000);
@@ -318,7 +343,7 @@ app.get("/auth/tiktok-shop/callback", async (req, res) => {
     const shop = shops.find((x) => x.shop_cipher) || shops[0];
     if (!shop?.shop_cipher) return res.status(502).send(html("TikTok Shop Seller Authorization", "<h1>Seller terotorisasi, tetapi shop_cipher tidak ditemukan.</h1>"));
     const sessionId = randomToken(32);
-    await sellerSessions.set(sessionId, {
+    const sellerSession = {
       createdAt: Date.now(),
       accessToken: data.access_token,
       refreshToken: data.refresh_token || null,
@@ -327,7 +352,9 @@ app.get("/auth/tiktok-shop/callback", async (req, res) => {
       shopCipher: shop.shop_cipher,
       shopId: shop.shop_id || shop.id || null,
       shopName: shop.shop_name || shop.name || null
-    });
+    };
+    await sellerSessions.set(sessionId, sellerSession);
+    await sellerSessions.set("primary", sellerSession);
     setCookie(res, "robot_ai_seller_session", sessionId, 86400);
     res.send(html("TikTok Shop Seller Connected", `<h1 class="ok">TikTok Shop Seller berhasil terhubung</h1><pre>${escapeHtml(JSON.stringify({ shop_name: shop.shop_name || shop.name || null, shop_id: shop.shop_id || shop.id || null, granted_scopes: data.granted_scopes || [] }, null, 2))}</pre><p>Token tidak ditampilkan.</p><p><a href="/">Kembali ke Robot AI</a></p>`));
   } catch (error) {
@@ -1244,13 +1271,19 @@ function cleanupMemoryState() {
 const memoryCleanupTimer = setInterval(cleanupMemoryState, MEMORY_CLEANUP_INTERVAL_MS);
 memoryCleanupTimer.unref?.();
 
-const shopAutonomyConfigured = shopCredentialsConfigured();
+const shopAutonomyConfigured = shopAppConfigured();
 
 startAutonomyScheduler({
   enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopAutonomyConfigured,
   intervalMs: Number(process.env.ROBOT_AUTONOMY_INTERVAL_MS) || 60 * 60 * 1000,
   loadProducts: async () => {
-    const result = await tiktokShopClient.searchProducts({ page_size: 100, status: "ACTIVATE" });
+    const sellerSession = await getPrimarySellerSession();
+    if (!sellerSession) throw new Error("primary_seller_session_missing");
+    const result = await tiktokShopClient.searchProducts({
+      page_size: 100,
+      status: "ACTIVATE",
+      credentials: sellerCredentials(sellerSession)
+    });
     if (!result.response?.ok || Number(result.data?.code) !== 0) throw new Error("tts_product_fetch_failed");
     return tiktokShopClient.normalizeShopProducts(result.data);
   },
@@ -1258,7 +1291,12 @@ startAutonomyScheduler({
     if (autonomyState.emergency_stop) return;
     let performance = [];
     try {
-      const analytics = await tiktokShopClient.getProductPerformance({ currency: "LOCAL" });
+      const sellerSession = await getPrimarySellerSession();
+      if (!sellerSession) throw new Error("primary_seller_session_missing");
+      const analytics = await tiktokShopClient.getProductPerformance({
+        currency: "LOCAL",
+        credentials: sellerCredentials(sellerSession)
+      });
       if (analytics.response.ok && Number(analytics.data?.code) === 0) performance = tiktokShopClient.normalizeProductPerformance(analytics.data);
     } catch (error) {
       console.error("Autonomy analytics fetch failed:", error?.message || error);
