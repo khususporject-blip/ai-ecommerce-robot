@@ -62,7 +62,15 @@ The backend now contains the Direct Post request path using `PULL_FROM_URL`. Tik
 - OAuth state is generated server-side and checked against an HttpOnly cookie.
 - TikTok creator sessions are held in an encrypted server-side session store; TikTok Shop seller sessions use the persistent encrypted seller-session store backed by Upstash Redis when configured, otherwise the Railway-mounted file-memory adapter. Do not run multi-instance production automation without a shared durable backend.
 
-## TikTok Shop Seller Authorization\n\nSeller authorization is a separate TikTok Shop flow from TikTok creator Login Kit. The production seller path is `GET /auth/tiktok-shop/seller`; it requires `TTS_APP_KEY`, `TTS_APP_SECRET`, `TTS_SERVICE_ID`, and a configured `TTS_SELLER_AUTH_URL`. After owner consent, the backend exchanges the authorization code, validates seller `user_type`, retrieves authorized shops, stores the selected `shop_cipher` with encrypted session credentials, and refreshes seller tokens when possible. Seller secrets and tokens are never returned to the browser.\n\n## AI Provider\n\nAI generation is deliberately credential-gated. Set `AI_API_KEY` and optionally `AI_BASE_URL` / `AI_MODEL`; without an explicit provider credential the runtime returns `ai_provider_not_configured` rather than fabricating AI output or silently using an unknown provider.\n\n## Deployment trigger
+## TikTok Shop Seller Authorization
+
+Seller authorization is a separate TikTok Shop flow from TikTok creator Login Kit. The production seller path is `GET /auth/tiktok-shop/seller`; it requires `TTS_APP_KEY`, `TTS_APP_SECRET`, `TTS_SERVICE_ID`, and a configured `TTS_SELLER_AUTH_URL`. After owner consent, the backend exchanges the authorization code, validates seller `user_type`, retrieves authorized shops, stores the selected `shop_cipher` with encrypted session credentials, and refreshes seller tokens when possible. Seller secrets and tokens are never returned to the browser.
+
+## AI Provider
+
+AI generation is deliberately credential-gated. Set `AI_API_KEY` and optionally `AI_BASE_URL` / `AI_MODEL`; without an explicit provider credential the runtime returns `ai_provider_not_configured` rather than fabricating AI output or silently using an unknown provider.
+
+## Deployment trigger
 
 Operational deployment note: Railway must deploy the current default-branch commit; a Railway "Redeploy" reuses the previous deployment snapshot and does not fetch a newer GitHub commit. After a source change, verify the active deployment commit and runtime health before treating the release as live.
 
