@@ -13,7 +13,8 @@ export async function generateText(prompt, options = {}) {
   const apiKey = process.env.AI_API_KEY;
   if (!apiKey) return { ok: false, code: "ai_provider_not_configured" };
 
-  const base = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\\/+$/, "");
+  let base = process.env.AI_BASE_URL || "https://api.openai.com/v1";
+  while (base.endsWith("/")) base = base.slice(0, -1);
   const model = options.model || process.env.AI_MODEL || "gpt-4.1-mini";
   const timeoutMs = Number.isFinite(Number(options.timeoutMs))
     ? Math.min(60_000, Math.max(1_000, Number(options.timeoutMs)))
