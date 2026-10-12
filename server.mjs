@@ -22,6 +22,7 @@ import { sellerAuthStatus, buildSellerAuthorizeUrl, exchangeSellerCode, refreshS
 import { createUpstashMemoryAdapter, upstashMemoryConfigured } from "./upstash-memory-adapter.mjs";
 import { buildContentExecution } from "./content-executor.mjs";
 import { createPersistentSellerSessionStore } from "./seller-session-store.mjs";
+import { validateDirectPostInput } from "./tiktok-post-policy.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1198,12 +1199,21 @@ app.post("/api/tiktok/publish-url", async (req, res) => {
       });
     }
 
-    const options = creatorBody?.data?.privacy_level_options || [];
-    const selectedPrivacy = privacyLevel || options.find((value) => value === "SELF_ONLY") || options[0];
-    if (!selectedPrivacy || !options.includes(selectedPrivacy)) {
-      return res.status(400).json({
-        error: "privacy_level_invalid",
-        allowed: options
+    const creatorInfo = creatorBody?.data || {};
+    const validation = validateDirectPostInput({
+      ...req.body,
+      privacy_level: privacyLevel,
+      commercial_content_toggle: req.body?.commercial_content_toggle,
+      brand_organic_toggle: req.body?.brand_organic_toggle,
+      brand_content_toggle: req.body?.brand_content_toggle
+    }, creatorInfo);
+    if (!validation.ok) {
+      return res.status(validation.status).json({
+        error: validation.error,
+        ...(validation.allowed ? { allowed: validation.allowed } : {}),
+        ...(validation.field ? { field: validation.field } : {}),
+        ...(validation.video_duration_sec !== undefined ? { video_duration_sec: validation.video_duration_sec } : {}),
+        ...(validation.max_video_post_duration_sec !== undefined ? { max_video_post_duration_sec: validation.max_video_post_duration_sec } : {})
       });
     }
 
@@ -1212,9 +1222,12 @@ app.post("/api/tiktok/publish-url", async (req, res) => {
       body: JSON.stringify({
         post_info: {
           title: title.slice(0, 2200),
-          privacy_level: selectedPrivacy,
-          ...(req.body?.brand_organic_toggle === true ? { brand_organic_toggle: true } : {}),
-          ...(req.body?.brand_content_toggle === true ? { brand_content_toggle: true } : {}),
+          privacy_level: validation.privacyLevel,
+          disable_comment: validation.disableComment,
+          disable_duet: validation.disableDuet,
+          disable_stitch: validation.disableStitch,
+          brand_organic_toggle: validation.brandOrganic,
+          brand_content_toggle: validation.brandContent,
           ...(req.body?.is_aigc === true ? { is_aigc: true } : {})
         },
         source_info: {
