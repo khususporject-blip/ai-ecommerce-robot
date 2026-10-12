@@ -48,7 +48,7 @@ jobs:
           echo "Waiting for production health check and expected commit $GITHUB_SHA..."
           for i in $(seq 1 30); do
             body=$(curl -fsS https://robot-ai-production-1fdb.up.railway.app/health || true)
-            if BODY="$body" EXPECTED_SHA="$GITHUB_SHA" node -e 'try { const x = JSON.parse(process.env.BODY || "{}"); process.exit(x.ok === true && x.commit === process.env.EXPECTED_SHA ? 0 : 1); } catch { process.exit(1); }'; then
+            if BODY="$body" EXPECTED_SHA="$GITHUB_SHA" node -e 'try { const x = JSON.parse(process.env.BODY || "{}"); process.exit(x.ok === true && x.deployment?.commit === process.env.EXPECTED_SHA ? 0 : 1); } catch { process.exit(1); }'; then
               echo "$body"
               exit 0
             fi
