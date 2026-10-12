@@ -35,6 +35,8 @@ assert.match(server, /tiktokShopClient/);
 assert.match(server, /runAutonomousCycle/);
 assert.match(server, /startAutonomyScheduler/);
 assert.match(server, /ROBOT_AUTONOMY_ENABLED/);
+assert.match(server, /seller_authorization: \{ \.\.\.sellerAuthStatus\(\), authorized: sellerAuthorized \}/);
+assert.match(server, /autonomous_loop_enabled:.*sellerAuthorized/);
 assert.match(scheduler, /startAutonomyScheduler/);
 assert.match(scheduler, /source: "autonomous_scheduler"/);
 assert.match(server, /\/api\/tiktok\/upload-init/);

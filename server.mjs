@@ -219,7 +219,19 @@ app.get(/^\/tiktok([A-Za-z0-9]{24,80})\.txt$/, (req, res) => {
   res.type("text/plain").send("tiktok-developers-site-verification=" + token);
 });
 
-app.get("/health", (_req, res) => {
+app.get("/health", async (_req, res) => {
+  // Report whether a seller session is actually present without exposing tokens
+  // or triggering a network refresh from the health-check path.
+  let primarySellerSession = null;
+  try {
+    primarySellerSession = await sellerSessions.get("primary");
+  } catch (error) {
+    console.error("Seller readiness check failed:", error?.message || error);
+  }
+  const sellerAuthorized = Boolean(
+    primarySellerSession && Number(primarySellerSession.expiresAt) > Date.now()
+  );
+
   res.json({
     ok: true,
     service: "robot-ai",
@@ -237,11 +249,10 @@ app.get("/health", (_req, res) => {
       configured: upstashMemoryConfigured() || Boolean(process.env.BUSINESS_MEMORY_DIR)
     },
     capabilities: {
-      seller_authorization: sellerAuthStatus(),
-
+      seller_authorization: { ...sellerAuthStatus(), authorized: sellerAuthorized },
       tiktok_shop_configured: shopCredentialsConfigured(),
       autonomous_loop_requested: process.env.ROBOT_AUTONOMY_ENABLED === "true",
-      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopCredentialsConfigured(),
+      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopCredentialsConfigured() && sellerAuthorized,
       ai_provider_configured: aiProviderStatus().configured,
       emergency_stop: autonomyState.emergency_stop
     }
