@@ -1120,16 +1120,27 @@ app.post("/api/robot/cycle", async (req, res) => {
   if (autonomyState.emergency_stop) return res.status(423).json({ error: "emergency_stop_active" });
   try {
     let products = Array.isArray(req.body?.products) ? req.body.products : [];
-    if (!products.length && process.env.TTS_APP_KEY && process.env.TTS_APP_SECRET && process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER) {
-      const result = await tiktokShopClient.searchProducts({ status: "ACTIVATE", page_size: 100, locale: "id-ID" });
+    // Prefer the persistently authorized seller session; environment access tokens are only a fallback.
+    const primarySellerSession = await getPrimarySellerSession();
+    const shopCredentials = primarySellerSession
+      ? sellerCredentials(primarySellerSession)
+      : (shopCredentialsConfigured() ? undefined : null);
+    if (!products.length && shopCredentials) {
+      const result = await tiktokShopClient.searchProducts({
+        status: "ACTIVATE",
+        page_size: 100,
+        locale: "id-ID",
+        ...(primarySellerSession ? { credentials: shopCredentials } : {})
+      });
       if (result.response.ok && Number(result.data?.code) === 0) products = tiktokShopClient.normalizeShopProducts(result.data);
     }
     let performance = Array.isArray(req.body?.performance) ? req.body.performance : [];
-    if (!performance.length && shopCredentialsConfigured()) {
+    if (!performance.length && shopCredentials) {
       const analytics = await tiktokShopClient.getProductPerformance({
         start_date: req.body?.start_date,
         end_date: req.body?.end_date,
-        currency: req.body?.currency
+        currency: req.body?.currency,
+        ...(primarySellerSession ? { credentials: shopCredentials } : {})
       });
       if (analytics.response.ok && Number(analytics.data?.code) === 0) {
         performance = tiktokShopClient.normalizeProductPerformance(analytics.data);
