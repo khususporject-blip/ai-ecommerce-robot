@@ -1,8 +1,9 @@
-name: Railway production deploy
+name: Railway production deploy (manual fallback)
 
+# Automatic production deployments are handled by the existing Railway↔GitHub
+# source connection. This workflow is a manual fallback only, so push builds
+# cannot report a false-green deployment when GitHub Actions has no Railway token.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -14,22 +15,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Detect Railway credentials
-        id: auth
+      - name: Require Railway credentials
         shell: bash
         env:
           PROJECT_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           ACCOUNT_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
-          if [ -n "$PROJECT_TOKEN" ] || [ -n "$ACCOUNT_TOKEN" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Railway deployment credentials are not configured; deployment step will be skipped safely."
+          if [ -z "$PROJECT_TOKEN" ] && [ -z "$ACCOUNT_TOKEN" ]; then
+            echo "::error::No Railway token is configured. Add RAILWAY_TOKEN or RAILWAY_API_TOKEN in GitHub repository Actions secrets before running this manual fallback."
+            exit 1
           fi
 
-      - name: Deploy to existing Railway service
-        if: steps.auth.outputs.configured == 'true'
+      - name: Deploy to existing Railway service and verify exact commit
+        shell: bash
         env:
           PROJECT_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           ACCOUNT_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
@@ -41,24 +39,20 @@ jobs:
             export RAILWAY_API_TOKEN="$ACCOUNT_TOKEN"
             unset RAILWAY_TOKEN
           fi
+
           npx --yes @railway/cli up --ci --yes \
             --project 46c9a399-4293-4e85-a4fa-1ec49d22c462 \
             --environment 5d98a9b0-c388-4f7d-9269-d482e8c92daf \
             --service 36152362-c2a4-4b92-a8a7-9a49da41d539
-          echo "Waiting for production health check..."
+
+          echo "Waiting for production health check and expected commit $GITHUB_SHA..."
           for i in $(seq 1 30); do
             body=$(curl -fsS https://robot-ai-production-1fdb.up.railway.app/health || true)
-            if echo "$body" | grep -q '"ok":true'; then
+            if BODY="$body" EXPECTED_SHA="$GITHUB_SHA" node -e 'try { const x = JSON.parse(process.env.BODY || "{}"); process.exit(x.ok === true && x.commit === process.env.EXPECTED_SHA ? 0 : 1); } catch { process.exit(1); }'; then
               echo "$body"
               exit 0
             fi
             sleep 10
           done
-          echo "Production health check did not reach OK state."
+          echo "::error::Production did not report healthy state for the exact commit $GITHUB_SHA."
           exit 1
-
-      - name: Report deployment gate
-        if: steps.auth.outputs.configured != 'true'
-        run: |
-          echo "Production deployment is intentionally gated because no Railway token is available to this workflow."
-          echo "Source code and CI remain authoritative; no deployment is claimed."
