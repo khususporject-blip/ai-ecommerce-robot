@@ -270,6 +270,9 @@ async function requireSellerSession(req, res) {
         session.refreshToken = data.refresh_token || session.refreshToken;
         session.expiresAt = Date.now() + Math.max(60, Number(data.access_token_expire_in || data.expires_in || 86400) - 300) * 1000;
         session.grantedScopes = data.granted_scopes || session.grantedScopes;
+        // The persistent store returns a decrypted copy; save rotated credentials
+        // so subsequent requests/restarts do not keep using the expired refresh token.
+        await sellerSessions.set(sessionId, session);
       }
     } catch {}
   }
