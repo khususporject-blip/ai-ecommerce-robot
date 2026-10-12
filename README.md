@@ -60,7 +60,7 @@ The backend now contains the Direct Post request path using `PULL_FROM_URL`. Tik
 - Keep access and refresh tokens server-side.
 - Use HTTPS in production.
 - OAuth state is generated server-side and checked against an HttpOnly cookie.
-- TikTok creator sessions are held in an encrypted server-side session store; TikTok Shop seller sessions use the persistent encrypted seller-session store backed by Upstash Redis when configured, otherwise the Railway-mounted file-memory adapter. Do not run multi-instance production automation without a shared durable backend.
+- TikTok Shop seller sessions use an encrypted persistent store backed by Upstash Redis when configured, otherwise the file-memory adapter. The TikTok creator Login Kit session map is currently process-local and is cleared on restart; users may need to sign in again. Do not run multi-instance production automation without a shared durable backend. Set `SELLER_SESSION_ENCRYPTION_KEY` to a stable, high-entropy secret so seller sessions remain decryptable across deployments and secret rotations.
 
 ## TikTok Shop Seller Authorization
 
