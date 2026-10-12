@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { validateDirectPostInput } from "../tiktok-post-policy.mjs";
 import fs from "node:fs/promises";
 import { scoreProduct } from "../product-intelligence.mjs";
 import { analyzePerformance } from "../performance-brain.mjs";
@@ -101,3 +102,26 @@ assert.equal(typeof buildSellerAuthorizeUrl, "function");
 assert.equal(typeof upstashMemoryConfigured, "function");
 assert.equal(typeof createUpstashMemoryAdapter, "function");
 assert.equal(buildContentExecution({ video_url: "https://example.com/video.mp4", posts_today: 0 }).ready, true);
+
+const creatorPolicy = {
+  privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+  max_video_post_duration_sec: 120,
+  comment_disabled: false,
+  duet_disabled: false,
+  stitch_disabled: false
+};
+const validPostInput = {
+  user_consent: true,
+  privacy_level: "PUBLIC_TO_EVERYONE",
+  video_duration_sec: 30,
+  disable_comment: false,
+  disable_duet: false,
+  disable_stitch: false,
+  commercial_content_toggle: false,
+  brand_organic_toggle: false,
+  brand_content_toggle: false
+};
+assert.equal(validateDirectPostInput(validPostInput, creatorPolicy).ok, true);
+assert.equal(validateDirectPostInput({ ...validPostInput, user_consent: false }, creatorPolicy).error, "explicit_user_consent_required");
+assert.equal(validateDirectPostInput({ ...validPostInput, privacy_level: "" }, creatorPolicy).error, "privacy_level_selection_required");
+assert.equal(validateDirectPostInput({ ...validPostInput, video_duration_sec: 121 }, creatorPolicy).error, "video_duration_exceeds_creator_limit");
