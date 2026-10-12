@@ -7,6 +7,7 @@ import { normalizeProductPerformance } from "../tiktok-shop-client.mjs";
 import { sellerAuthStatus, buildSellerAuthorizeUrl } from "../seller-auth.mjs";
 import { upstashMemoryConfigured, createUpstashMemoryAdapter } from "../upstash-memory-adapter.mjs";
 import { buildContentExecution } from "../content-executor.mjs";
+import { generateText, aiProviderStatus } from "../ai-provider.mjs";
 
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -125,3 +126,63 @@ assert.equal(validateDirectPostInput(validPostInput, creatorPolicy).ok, true);
 assert.equal(validateDirectPostInput({ ...validPostInput, user_consent: false }, creatorPolicy).error, "explicit_user_consent_required");
 assert.equal(validateDirectPostInput({ ...validPostInput, privacy_level: "" }, creatorPolicy).error, "privacy_level_selection_required");
 assert.equal(validateDirectPostInput({ ...validPostInput, video_duration_sec: 121 }, creatorPolicy).error, "video_duration_exceeds_creator_limit");
+
+
+const originalApiKey = process.env.AI_API_KEY;
+const originalFetch = globalThis.fetch;
+try {
+  delete process.env.AI_API_KEY;
+  assert.equal(aiProviderStatus().configured, false);
+  assert.deepEqual(await generateText("hello"), { ok: false, code: "ai_provider_not_configured" });
+
+  process.env.AI_API_KEY = "test-only-key";
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init.method, "POST");
+    assert.equal(init.headers.Authorization, "Bearer test-only-key");
+    const body = JSON.parse(init.body);
+    assert.equal(body.model, "gpt-4.1-mini");
+    assert.equal(body.messages[1].content, "test prompt");
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ choices: [{ message: { content: "Draft content" } }], usage: { total_tokens: 12 } })
+    };
+  };
+  assert.deepEqual(await generateText("test prompt"), {
+    ok: true,
+    text: "Draft content",
+    usage: { total_tokens: 12 }
+  });
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ choices: [{ message: { content: "   " } }] })
+  });
+  assert.deepEqual(await generateText("empty response"), {
+    ok: false,
+    code: "ai_provider_empty_response"
+  });
+
+  globalThis.fetch = async () => {
+    throw new TypeError("network unavailable");
+  };
+  assert.deepEqual(await generateText("network error"), {
+    ok: false,
+    code: "ai_provider_unavailable"
+  });
+
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 429,
+    json: async () => ({ error: { message: "rate limited" } })
+  });
+  const providerError = await generateText("provider error");
+  assert.equal(providerError.ok, false);
+  assert.equal(providerError.code, "ai_provider_error");
+  assert.equal(providerError.status, 429);
+} finally {
+  globalThis.fetch = originalFetch;
+  if (originalApiKey === undefined) delete process.env.AI_API_KEY;
+  else process.env.AI_API_KEY = originalApiKey;
+}
