@@ -250,9 +250,14 @@ app.get("/health", async (_req, res) => {
     },
     capabilities: {
       seller_authorization: { ...sellerAuthStatus(), authorized: sellerAuthorized },
-      tiktok_shop_configured: shopCredentialsConfigured(),
+      // Seller OAuth keeps accessToken and shopCipher in the persistent session,
+      // so those do not need to be duplicated as environment variables.
+      tiktok_shop_configured: Boolean(
+        shopAppConfigured() &&
+        (sellerAuthorized || (process.env.TTS_ACCESS_TOKEN && process.env.TTS_SHOP_CIPHER))
+      ),
       autonomous_loop_requested: process.env.ROBOT_AUTONOMY_ENABLED === "true",
-      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopCredentialsConfigured() && sellerAuthorized,
+      autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopAppConfigured() && sellerAuthorized,
       ai_provider_configured: aiProviderStatus().configured,
       emergency_stop: autonomyState.emergency_stop
     }
