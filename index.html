@@ -15,11 +15,62 @@
 <section class="hero"><div><div class="eyebrow">AI Sales Brain</div><h1>Robot AI untuk menjalankan siklus jualan.</h1><p>Robot AI menyatukan perencanaan produk, pembuatan konten, eksperimen, pengukuran performa, dan optimasi. Eksekusi sensitif tetap dikendalikan oleh policy dan otorisasi akun.</p><a class="cta" href="#cara-kerja">Lihat cara kerja</a> <a class="cta" href="/auth/tiktok">Hubungkan TikTok</a></div>
 <div class="card"><div class="small">Contoh percakapan</div><div class="chat"><div class="msg bot">Halo! Saya Robot AI. Produk apa yang sedang kamu cari?</div><div class="msg user">Saya butuh headphone untuk kerja dan meeting.</div><div class="msg bot">Siap. Saya bisa bantu mempersempit pilihan berdasarkan budget, fitur, dan kebutuhan meeting.</div><div class="msg user">Budget sekitar Rp1 juta.</div><div class="msg bot">Oke. Saya akan fokus pada pilihan sekitar budget tersebut dan menjelaskan perbedaannya.</div><div class="input" id="assistantInput">Ketik kebutuhan belanja kamu…</div><div style="display:flex;gap:8px;margin-top:10px"><input id="command" aria-label="Perintah Robot AI" placeholder="Contoh: hubungkan TikTok" style="flex:1;border:1px solid #dddfe7;border-radius:10px;padding:11px"><button id="send" style="border:0;border-radius:10px;padding:11px 14px;font-weight:700">Kirim</button><button id="voice" title="Perintah suara" style="border:0;border-radius:10px;padding:11px 14px">🎙️</button></div><div id="assistantReply" class="small" style="margin-top:10px"></div></div></div></section>
 <section class="section" id="fitur"><h2>Mesin utama Robot AI</h2><div class="grid"><article class="feature"><div>🧠</div><h3>Sales Brain</h3><p>Prioritaskan produk, objective, audience, eksperimen, dan next action dari data yang tersedia.</p></article><article class="feature"><div>🎬</div><h3>Content Factory</h3><p>Bangun hook, angle, script, caption, CTA, dan eksperimen variasi secara sistematis.</p></article><article class="feature"><div>📈</div><h3>Performance Loop</h3><p>Ukur sinyal yang tersedia, catat hasil eksperimen, lalu tentukan iterasi berikutnya sesuai policy.</p></article></div></section>
-<section class="section" id="cara-kerja"><div class="card"><h2>Login dengan TikTok</h2><p class="small">Robot AI menggunakan TikTok Login Kit dengan OAuth 2.0. Authorization code ditukar oleh backend sehingga client secret dan token tidak pernah dikirim ke frontend.</p><a class="cta" href="/auth/tiktok">Continue with TikTok</a></div></section>
+<section class="section" id="cara-kerja">
+  <div class="card">
+    <h2>Tautkan akun TikTok Shop untuk berjualan</h2>
+    <p>Hubungkan akun seller TikTok Shop agar Robot AI dapat membaca produk toko dan menyiapkan siklus analisis penjualan. Ini berbeda dari login TikTok biasa.</p>
+    <div id="connectionStatus" aria-live="polite" style="background:#f7f7fa;border:1px solid #e6e7ed;border-radius:14px;padding:14px;margin:16px 0">Memeriksa kesiapan koneksi production…</div>
+    <a class="cta" href="/auth/tiktok-shop/seller">Hubungkan TikTok Shop Seller</a>
+    <p class="small">Token disimpan di backend; jangan pernah menempelkan API key atau App Secret ke chat atau formulir publik.</p>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h2>Login TikTok (Login Kit)</h2>
+    <p class="small">Login Kit digunakan untuk fitur akun TikTok dan izin Content Posting API. Otorisasi seller TikTok Shop dilakukan lewat tombol di atas.</p>
+    <a class="login" href="/auth/tiktok">Masuk dengan TikTok</a>
+  </div>
+</section>
 </main>
 <script>
 const command = document.getElementById("command");
 const reply = document.getElementById("assistantReply");
+
+function readinessLine(label, ready) {
+  const status = ready ? "Siap" : "Belum siap";
+  const color = ready ? "#16794b" : "#b42318";
+  return `<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0"><span>${label}</span><strong style="color:${color}">${status}</strong></div>`;
+}
+
+async function loadConnectionReadiness() {
+  const panel = document.getElementById("connectionStatus");
+  try {
+    const response = await fetch("/health", { cache: "no-store" });
+    if (!response.ok) throw new Error("health_check_failed");
+    const health = await response.json();
+    const capabilities = health.capabilities || {};
+    const seller = capabilities.seller_authorization || {};
+    const rows = [
+      ["Backend production", health.ok === true],
+      ["Provider AI", capabilities.ai_provider_configured === true],
+      ["Konfigurasi aplikasi TikTok Shop", seller.configured === true],
+      ["Akun seller sudah terhubung", seller.authorized === true],
+      ["Siklus otomatis siap berjalan", capabilities.autonomous_loop_enabled === true]
+    ];
+    panel.innerHTML = rows.map(([label, ready]) => readinessLine(label, ready)).join("");
+    const missing = Array.isArray(seller.missing_fields) ? seller.missing_fields : [];
+    const note = document.createElement("p");
+    note.className = "small";
+    note.style.marginBottom = "0";
+    note.textContent = missing.length
+      ? "Konfigurasi seller yang belum tersedia di server: " + missing.join(", ") + "."
+      : seller.authorized
+        ? "Akun seller terdeteksi terhubung di server."
+        : "Konfigurasi dasar tersedia; akun seller masih perlu diotorisasi.";
+    panel.appendChild(note);
+  } catch {
+    panel.textContent = "Status production tidak bisa dibaca. Coba muat ulang halaman.";
+  }
+}
+loadConnectionReadiness();
 async function runCommand() {
   const value = command.value.trim();
   if (!value) return;
