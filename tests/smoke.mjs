@@ -13,6 +13,15 @@ const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
 const scheduler = await fs.readFile(new URL("../autonomy-scheduler.mjs", import.meta.url), "utf8");
 const shopClient = await fs.readFile(new URL("../tiktok-shop-client.mjs", import.meta.url), "utf8");
+const sellerAuthSource = await fs.readFile(new URL("../seller-auth.mjs", import.meta.url), "utf8");
+const indexHtml = await fs.readFile(new URL("../index.html", import.meta.url), "utf8");
+
+assert.match(sellerAuthSource, /service_id_configured: Boolean\(SERVICE_ID\)/);
+assert.match(sellerAuthSource, /missing_fields: missingFields/);
+assert.match(indexHtml, /\/auth\/tiktok-shop\/seller/);
+assert.match(indexHtml, /id="connectionStatus"/);
+assert.match(indexHtml, /loadConnectionReadiness/);
+assert.match(indexHtml, /ai_provider_configured/);
 
 assert.match(server, /v2\/auth\/authorize\//);
 assert.match(server, /v2\/oauth\/token\//);

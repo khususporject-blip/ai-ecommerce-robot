@@ -5,20 +5,30 @@ const APP_SECRET = process.env.TTS_APP_SECRET || "";
 const AUTH_BASE = String(process.env.TTS_SELLER_AUTH_URL || "").replace(/\/$/, "");
 const API_BASE = process.env.TTS_API_BASE_URL || "https://open-api.tiktokglobalshop.com";
 
+const SERVICE_ID = process.env.TTS_SERVICE_ID || "";
+
 export function sellerAuthStatus() {
+  const missingFields = [];
+  if (!APP_KEY) missingFields.push("TTS_APP_KEY");
+  if (!APP_SECRET) missingFields.push("TTS_APP_SECRET");
+  if (!AUTH_BASE) missingFields.push("TTS_SELLER_AUTH_URL");
+  if (!SERVICE_ID) missingFields.push("TTS_SERVICE_ID");
+
   return {
-    configured: Boolean(APP_KEY && APP_SECRET && AUTH_BASE),
+    configured: missingFields.length === 0,
     redirect_uri: process.env.TTS_SELLER_REDIRECT_URI || null,
     authorization_url_configured: Boolean(AUTH_BASE),
-    app_credentials_configured: Boolean(APP_KEY && APP_SECRET)
+    app_credentials_configured: Boolean(APP_KEY && APP_SECRET),
+    service_id_configured: Boolean(SERVICE_ID),
+    missing_fields: missingFields
   };
 }
 
 export function buildSellerAuthorizeUrl(state) {
-  if (!APP_KEY || !AUTH_BASE) throw new Error("tts_seller_auth_not_configured");
+  if (!APP_KEY || !APP_SECRET || !AUTH_BASE) throw new Error("tts_seller_auth_not_configured");
+  if (!SERVICE_ID) throw new Error("tts_service_id_missing");
   const url = new URL("/open/authorize", AUTH_BASE + "/");
-  url.searchParams.set("service_id", String(process.env.TTS_SERVICE_ID || ""));
-  if (!process.env.TTS_SERVICE_ID) throw new Error("tts_service_id_missing");
+  url.searchParams.set("service_id", SERVICE_ID);
   url.searchParams.set("state", state);
   return url.toString();
 }
