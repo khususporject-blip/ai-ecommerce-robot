@@ -326,6 +326,23 @@ async function getPrimarySellerSession() {
 }
 
 app.get("/auth/tiktok-shop/seller", (req, res) => {
+  const authStatus = sellerAuthStatus();
+  if (!authStatus.configured) {
+    const missingFields = Array.isArray(authStatus.missing_fields) ? authStatus.missing_fields : [];
+    const missingList = missingFields.length
+      ? `<ul>${missingFields.map((field) => `<li><code>${escapeHtml(field)}</code></li>`).join("")}</ul>`
+      : "<p class=\"err\">Konfigurasi seller belum lengkap.</p>";
+    return res.status(503).send(html(
+      "TikTok Shop Seller Authorization",
+      `<h1>Belum bisa menghubungkan TikTok Shop</h1>
+       <p>Robot AI belum memiliki konfigurasi aplikasi seller yang diperlukan di server production.</p>
+       <p>Field konfigurasi yang belum tersedia:</p>${missingList}
+       <p>App Key dan App Secret harus berasal dari aplikasi TikTok Shop di Partner Center; keduanya berbeda dari credential TikTok Login Kit.</p>
+       <p><a href="https://partner.tiktokshop.com/">Buka TikTok Shop Partner Center</a></p>
+       <p><a href="/">Kembali ke Robot AI</a></p>`
+    ));
+  }
+
   const state = randomToken(32);
   sellerStates.set(state, Date.now() + 10 * 60 * 1000);
   try {
@@ -333,7 +350,8 @@ app.get("/auth/tiktok-shop/seller", (req, res) => {
     setCookie(res, "robot_ai_seller_state", state, 600);
     res.redirect(url);
   } catch (error) {
-    res.status(503).send(html("TikTok Shop Seller Authorization", `<h1>Seller authorization belum dikonfigurasi</h1><p class="err">${escapeHtml(error?.message || error)}</p>`));
+    console.error("Seller authorization link generation failed:", error?.message || error);
+    res.status(503).send(html("TikTok Shop Seller Authorization", "<h1>Link authorization belum bisa dibuat.</h1><p class=\"err\">Periksa konfigurasi seller di halaman Robot AI.</p><p><a href="/">Kembali ke Robot AI</a></p>"));
   }
 });
 
