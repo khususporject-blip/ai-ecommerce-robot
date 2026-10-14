@@ -22,6 +22,9 @@ assert.match(indexHtml, /\/auth\/tiktok-shop\/seller/);
 assert.match(indexHtml, /id="connectionStatus"/);
 assert.match(indexHtml, /loadConnectionReadiness/);
 assert.match(indexHtml, /ai_provider_configured/);
+assert.match(server, /ai_provider_missing_fields:.*AI_API_KEY/);
+assert.match(indexHtml, /ai_provider_missing_fields/);
+assert.match(indexHtml, /Konfigurasi production yang belum tersedia/);
 
 assert.match(server, /v2\/auth\/authorize\//);
 assert.match(server, /v2\/oauth\/token\//);
