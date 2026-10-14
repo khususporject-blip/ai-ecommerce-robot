@@ -259,6 +259,7 @@ app.get("/health", async (_req, res) => {
       autonomous_loop_requested: process.env.ROBOT_AUTONOMY_ENABLED === "true",
       autonomous_loop_enabled: process.env.ROBOT_AUTONOMY_ENABLED === "true" && shopAppConfigured() && sellerAuthorized,
       ai_provider_configured: aiProviderStatus().configured,
+      ai_provider_missing_fields: aiProviderStatus().configured ? [] : ["AI_API_KEY"],
       emergency_stop: autonomyState.emergency_stop
     }
   });
