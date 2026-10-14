@@ -56,15 +56,19 @@ async function loadConnectionReadiness() {
       ["Siklus otomatis siap berjalan", capabilities.autonomous_loop_enabled === true]
     ];
     panel.innerHTML = rows.map(([label, ready]) => readinessLine(label, ready)).join("");
-    const missing = Array.isArray(seller.missing_fields) ? seller.missing_fields : [];
+    const sellerMissing = Array.isArray(seller.missing_fields) ? seller.missing_fields : [];
+    const aiMissing = Array.isArray(capabilities.ai_provider_missing_fields) ? capabilities.ai_provider_missing_fields : [];
+    const missing = [...new Set([...sellerMissing, ...aiMissing])];
     const note = document.createElement("p");
     note.className = "small";
     note.style.marginBottom = "0";
     note.textContent = missing.length
-      ? "Konfigurasi seller yang belum tersedia di server: " + missing.join(", ") + "."
-      : seller.authorized
-        ? "Akun seller terdeteksi terhubung di server."
-        : "Konfigurasi dasar tersedia; akun seller masih perlu diotorisasi.";
+      ? "Konfigurasi production yang belum tersedia: " + missing.join(", ") + "."
+      : seller.authorized && capabilities.ai_provider_configured
+        ? "Akun seller dan provider AI terdeteksi siap; siklus otomatis tetap harus diverifikasi."
+        : seller.authorized
+          ? "Akun seller terdeteksi terhubung; konfigurasi provider AI perlu diperiksa."
+          : "Konfigurasi dasar tersedia; akun seller masih perlu diotorisasi.";
     panel.appendChild(note);
   } catch {
     panel.textContent = "Status production tidak bisa dibaca. Coba muat ulang halaman.";
