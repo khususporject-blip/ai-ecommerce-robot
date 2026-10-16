@@ -6,12 +6,12 @@ export function upstashMemoryConfigured() {
   return Boolean(URL && TOKEN);
 }
 
-async function command(parts, body = null) {
+async function command(parts) {
   if (!upstashMemoryConfigured()) throw new Error("upstash_memory_not_configured");
   const response = await fetch(URL, {
-    method: body === null ? "GET" : "POST",
+    method: "POST",
     headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" },
-    body: body === null ? undefined : JSON.stringify(parts)
+    body: JSON.stringify(parts)
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) throw new Error(data?.error || "upstash_memory_request_failed");
