@@ -149,8 +149,13 @@ assert.equal(validateDirectPostInput({ ...validPostInput, video_duration_sec: 12
 
 
 const originalApiKey = process.env.AI_API_KEY;
+const originalAiModel = process.env.AI_MODEL;
+const originalAiBaseUrl = process.env.AI_BASE_URL;
 const originalFetch = globalThis.fetch;
 try {
+  // Make provider assertions deterministic even when production has its own model/base URL.
+  delete process.env.AI_MODEL;
+  delete process.env.AI_BASE_URL;
   delete process.env.AI_API_KEY;
   assert.equal(aiProviderStatus().configured, false);
   assert.deepEqual(await generateText("hello"), { ok: false, code: "ai_provider_not_configured" });
@@ -205,4 +210,8 @@ try {
   globalThis.fetch = originalFetch;
   if (originalApiKey === undefined) delete process.env.AI_API_KEY;
   else process.env.AI_API_KEY = originalApiKey;
+  if (originalAiModel === undefined) delete process.env.AI_MODEL;
+  else process.env.AI_MODEL = originalAiModel;
+  if (originalAiBaseUrl === undefined) delete process.env.AI_BASE_URL;
+  else process.env.AI_BASE_URL = originalAiBaseUrl;
 }
