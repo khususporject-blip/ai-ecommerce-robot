@@ -72,7 +72,7 @@ function sign(path, query) {
 }
 
 export async function getAuthorizedShops(accessToken) {
-  const path = "/authorization/202309/shops";
+  const path = "/seller/202309/shops";
   const timestamp = Math.floor(Date.now() / 1000);
   const query = { app_key: APP_KEY, timestamp };
   query.sign = sign(path, query);
