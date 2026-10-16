@@ -17,6 +17,7 @@ const sellerAuthSource = await fs.readFile(new URL("../seller-auth.mjs", import.
 const indexHtml = await fs.readFile(new URL("../index.html", import.meta.url), "utf8");
 
 assert.match(sellerAuthSource, /service_id_configured: Boolean\(SERVICE_ID\)/);
+assert.match(sellerAuthSource, /const path = "\/seller\/202309\/shops";/);
 assert.match(sellerAuthSource, /missing_fields: missingFields/);
 assert.match(indexHtml, /\/auth\/tiktok-shop\/seller/);
 assert.match(indexHtml, /id="connectionStatus"/);
