@@ -1387,4 +1387,13 @@ startAutonomyScheduler({
 
 app.listen(port, () => {
   console.log(`Robot AI listening on port ${port}`);
+  // Log presence only; never print secret values.
+  console.log("Robot AI credential readiness:", JSON.stringify({
+    ai_api_key: Boolean(String(process.env.AI_API_KEY || "").trim()),
+    tts_app_key: Boolean(String(process.env.TTS_APP_KEY || "").trim()),
+    tts_app_secret: Boolean(String(process.env.TTS_APP_SECRET || "").trim()),
+    tts_service_id: Boolean(String(process.env.TTS_SERVICE_ID || "").trim()),
+    tts_seller_auth_url: Boolean(String(process.env.TTS_SELLER_AUTH_URL || "").trim()),
+    tts_seller_auth_configured: sellerAuthStatus().configured
+  }));
 });
