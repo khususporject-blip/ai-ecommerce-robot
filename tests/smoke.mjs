@@ -141,7 +141,7 @@ try {
   };
   const memoryAdapter = createTestUpstashAdapter();
   assert.deepEqual(await memoryAdapter.get("user"), { saved: true });
-  assert.equal(await memoryAdapter.set("user", { saved: true }), '{"saved":true}');
+  assert.deepEqual(await memoryAdapter.set("user", { saved: true }), { saved: true });
   assert.equal(await memoryAdapter.delete("user"), true);
   assert.deepEqual(await memoryAdapter.list("task:"), [{ task_id: "task:1" }]);
   assert.deepEqual(commands.map((command) => command[0]), ["GET", "SET", "DEL", "KEYS", "MGET"]);
