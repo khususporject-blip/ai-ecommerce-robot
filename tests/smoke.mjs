@@ -116,6 +116,43 @@ assert.equal(analytics[0].signals.impressions, 1000);
 assert.equal(analytics[0].signals.clicks, 100);
 assert.equal(analytics[0].signals.gmv, 123.45);
 
+
+const originalUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const originalUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const originalUpstashFetch = globalThis.fetch;
+try {
+  process.env.UPSTASH_REDIS_REST_URL = "https://upstash-test.example";
+  process.env.UPSTASH_REDIS_REST_TOKEN = "test-upstash-token";
+  const { createUpstashMemoryAdapter: createTestUpstashAdapter } = await import("../upstash-memory-adapter.mjs?smoke-test");
+  const commands = [];
+  globalThis.fetch = async (url, init = {}) => {
+    assert.equal(String(url), "https://upstash-test.example");
+    assert.equal(init.method, "POST");
+    assert.equal(init.headers.Authorization, "Bearer test-upstash-token");
+    const command = JSON.parse(init.body);
+    commands.push(command);
+    let result = null;
+    if (command[0] === "GET") result = '{"saved":true}';
+    else if (command[0] === "SET") result = "OK";
+    else if (command[0] === "DEL") result = 1;
+    else if (command[0] === "KEYS") result = ["robot-ai:memory:task:1"];
+    else if (command[0] === "MGET") result = ['{"task_id":"task:1"}'];
+    return { ok: true, status: 200, json: async () => ({ result }) };
+  };
+  const memoryAdapter = createTestUpstashAdapter();
+  assert.deepEqual(await memoryAdapter.get("user"), { saved: true });
+  assert.deepEqual(await memoryAdapter.set("user", { saved: true }), { saved: true });
+  assert.equal(await memoryAdapter.delete("user"), true);
+  assert.deepEqual(await memoryAdapter.list("task:"), [{ task_id: "task:1" }]);
+  assert.deepEqual(commands.map((command) => command[0]), ["GET", "SET", "DEL", "KEYS", "MGET"]);
+} finally {
+  globalThis.fetch = originalUpstashFetch;
+  if (originalUpstashUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = originalUpstashUrl;
+  if (originalUpstashToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = originalUpstashToken;
+}
+
 console.log("Robot AI smoke checks passed.");
 
 assert.equal(typeof sellerAuthStatus, "function");
