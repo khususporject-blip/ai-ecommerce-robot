@@ -8,15 +8,22 @@ import { sellerAuthStatus, buildSellerAuthorizeUrl } from "../seller-auth.mjs";
 import { upstashMemoryConfigured, createUpstashMemoryAdapter } from "../upstash-memory-adapter.mjs";
 import { buildContentExecution } from "../content-executor.mjs";
 import { generateText, aiProviderStatus } from "../ai-provider.mjs";
+import { validateAffiliateCreatorToken } from "../affiliate-creator-auth.mjs";
 
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
 const scheduler = await fs.readFile(new URL("../autonomy-scheduler.mjs", import.meta.url), "utf8");
 const shopClient = await fs.readFile(new URL("../tiktok-shop-client.mjs", import.meta.url), "utf8");
 const sellerAuthSource = await fs.readFile(new URL("../seller-auth.mjs", import.meta.url), "utf8");
+const affiliateCreatorAuthSource = await fs.readFile(new URL("../affiliate-creator-auth.mjs", import.meta.url), "utf8");
 const indexHtml = await fs.readFile(new URL("../index.html", import.meta.url), "utf8");
 
 assert.match(sellerAuthSource, /service_id_configured: Boolean\(SERVICE_ID\)/);
+assert.match(affiliateCreatorAuthSource, /shop\.tiktok\.com\/alliance\/creator\/auth/);
+assert.match(affiliateCreatorAuthSource, /grant_type: "authorized_code"/);
+assert.match(server, /\/auth\/tiktok-shop\/affiliate-creator\/callback/);
+assert.match(server, /Number\(data\.user_type\) !== 1/);
+assert.match(indexHtml, /Hubungkan TikTok Shop Affiliate Creator/);
 assert.match(sellerAuthSource, /const path = "\/authorization\/202309\/shops";/);
 assert.match(sellerAuthSource, /missing_fields: missingFields/);
 assert.match(indexHtml, /\/auth\/tiktok-shop\/seller/);
@@ -256,3 +263,19 @@ try {
   if (originalAiBaseUrl === undefined) delete process.env.AI_BASE_URL;
   else process.env.AI_BASE_URL = originalAiBaseUrl;
 }
+
+const creatorTokenGood = validateAffiliateCreatorToken({
+  code: 0,
+  data: { user_type: 1, access_token: "creator-token", granted_scopes: ["creator.affiliate_collaboration.read"] }
+});
+assert.equal(creatorTokenGood.ok, true);
+assert.equal(creatorTokenGood.user_type, 1);
+assert.deepEqual(creatorTokenGood.granted_scopes, ["creator.affiliate_collaboration.read"]);
+assert.equal(validateAffiliateCreatorToken({
+  code: 0,
+  data: { user_type: 0, access_token: "seller-token" }
+}).ok, false);
+assert.equal(validateAffiliateCreatorToken({
+  code: 0,
+  data: { user_type: 1 }
+}).ok, false);
