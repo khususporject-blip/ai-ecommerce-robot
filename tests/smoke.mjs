@@ -197,7 +197,11 @@ try {
   assert.equal(aiProviderStatus().configured, false);
   assert.deepEqual(await generateText("hello"), { ok: false, code: "ai_provider_not_configured" });
 
-  process.env.AI_API_KEY = "test-only-key";
+  process.env.AI_API_KEY = "   ";
+  assert.equal(aiProviderStatus().configured, false);
+  assert.deepEqual(await generateText("whitespace key"), { ok: false, code: "ai_provider_not_configured" });
+
+  process.env.AI_API_KEY = "  test-only-key  ";
   globalThis.fetch = async (_url, init) => {
     assert.equal(init.method, "POST");
     assert.equal(init.headers.Authorization, "Bearer test-only-key");
