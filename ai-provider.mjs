@@ -3,19 +3,19 @@ const MAX_PROMPT_CHARS = 12_000;
 
 export function aiProviderStatus() {
   return {
-    configured: Boolean(process.env.AI_API_KEY),
-    base_url: process.env.AI_BASE_URL || null,
-    model: process.env.AI_MODEL || null
+    configured: Boolean(String(process.env.AI_API_KEY || "").trim()),
+    base_url: String(process.env.AI_BASE_URL || "").trim() || null,
+    model: String(process.env.AI_MODEL || "").trim() || null
   };
 }
 
 export async function generateText(prompt, options = {}) {
-  const apiKey = process.env.AI_API_KEY;
+  const apiKey = String(process.env.AI_API_KEY || "").trim();
   if (!apiKey) return { ok: false, code: "ai_provider_not_configured" };
 
-  let base = process.env.AI_BASE_URL || "https://api.openai.com/v1";
+  let base = String(process.env.AI_BASE_URL || "https://api.openai.com/v1").trim();
   while (base.endsWith("/")) base = base.slice(0, -1);
-  const model = options.model || process.env.AI_MODEL || "gpt-4.1-mini";
+  const model = String(options.model || process.env.AI_MODEL || "gpt-4.1-mini").trim() || "gpt-4.1-mini";
   const timeoutMs = Number.isFinite(Number(options.timeoutMs))
     ? Math.min(60_000, Math.max(1_000, Number(options.timeoutMs)))
     : DEFAULT_TIMEOUT_MS;
