@@ -537,7 +537,7 @@ app.post("/api/affiliate-creator/products/search", async (req, res) => {
   const session = await requireAffiliateCreatorSession(req);
   if (!session) return res.status(401).json({ error: "affiliate_creator_not_authorized" });
   const scopes = Array.isArray(session.grantedScopes) ? session.grantedScopes : [];
-  if (scopes.length && !scopes.includes("creator.affiliate_collaboration.read")) {
+  if (!scopes.includes("creator.affiliate_collaboration.read")) {
     return res.status(403).json({
       error: "affiliate_creator_scope_missing",
       required_scope: "creator.affiliate_collaboration.read",
