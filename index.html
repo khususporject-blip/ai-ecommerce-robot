@@ -17,11 +17,12 @@
 <section class="section" id="fitur"><h2>Mesin utama Robot AI</h2><div class="grid"><article class="feature"><div>🧠</div><h3>Sales Brain</h3><p>Prioritaskan produk, objective, audience, eksperimen, dan next action dari data yang tersedia.</p></article><article class="feature"><div>🎬</div><h3>Content Factory</h3><p>Bangun hook, angle, script, caption, CTA, dan eksperimen variasi secara sistematis.</p></article><article class="feature"><div>📈</div><h3>Performance Loop</h3><p>Ukur sinyal yang tersedia, catat hasil eksperimen, lalu tentukan iterasi berikutnya sesuai policy.</p></article></div></section>
 <section class="section" id="cara-kerja">
   <div class="card">
-    <h2>Tautkan akun TikTok Shop untuk berjualan</h2>
-    <p>Hubungkan akun seller TikTok Shop agar Robot AI dapat membaca produk toko dan menyiapkan siklus analisis penjualan. Ini berbeda dari login TikTok biasa.</p>
+    <h2>Robot AI untuk TikTok Shop Affiliate</h2>
+    <p>Karena targetnya mempromosikan produk milik seller lain tanpa stok sendiri, jalur utama adalah otorisasi <strong>Affiliate Creator</strong>—bukan Seller API. Seller Authorization di bawah hanya untuk pemilik toko yang ingin mengelola tokonya sendiri.</p>
     <div id="connectionStatus" aria-live="polite" style="background:#f7f7fa;border:1px solid #e6e7ed;border-radius:14px;padding:14px;margin:16px 0">Memeriksa kesiapan koneksi production…</div>
-    <a class="cta" href="/auth/tiktok-shop/seller">Hubungkan TikTok Shop Seller</a>
-    <p class="small">Token disimpan di backend; jangan pernah menempelkan API key atau App Secret ke chat atau formulir publik.</p>
+    <a class="cta" href="/auth/tiktok-shop/affiliate-creator">Hubungkan TikTok Shop Affiliate Creator</a>
+    <p class="small">Otorisasi kreator dan akses Affiliate API harus disetujui TikTok Shop Partner Center. Credential kreator disimpan terpisah dari credential seller.</p>
+    <details style="margin-top:14px"><summary>Jalur khusus pemilik toko (bukan affiliate)</summary><p class="small">Gunakan ini hanya jika Robot AI memang perlu membaca/mengelola produk dari toko milik sendiri.</p><a class="login" href="/auth/tiktok-shop/seller">Hubungkan TikTok Shop Seller</a></details>
   </div>
   <div class="card" style="margin-top:18px">
     <h2>Login TikTok (Login Kit)</h2>
@@ -48,27 +49,30 @@ async function loadConnectionReadiness() {
     const health = await response.json();
     const capabilities = health.capabilities || {};
     const seller = capabilities.seller_authorization || {};
+    const creator = capabilities.affiliate_creator_authorization || {};
     const rows = [
       ["Backend production", health.ok === true],
       ["Provider AI", capabilities.ai_provider_configured === true],
-      ["Konfigurasi aplikasi TikTok Shop", seller.configured === true],
-      ["Akun seller sudah terhubung", seller.authorized === true],
-      ["Siklus otomatis siap berjalan", capabilities.autonomous_loop_enabled === true]
+      ["Konfigurasi Affiliate Creator", creator.configured === true],
+      ["Akun Affiliate Creator terhubung", creator.authorized === true],
+      ["Konfigurasi Seller API (opsional untuk affiliate)", seller.configured === true],
+      ["Akun seller terhubung (opsional untuk affiliate)", seller.authorized === true],
+      ["Siklus otomatis seller siap", capabilities.autonomous_loop_enabled === true]
     ];
     panel.innerHTML = rows.map(([label, ready]) => readinessLine(label, ready)).join("");
-    const sellerMissing = Array.isArray(seller.missing_fields) ? seller.missing_fields : [];
+    const creatorMissing = Array.isArray(creator.missing_fields) ? creator.missing_fields : [];
     const aiMissing = Array.isArray(capabilities.ai_provider_missing_fields) ? capabilities.ai_provider_missing_fields : [];
-    const missing = [...new Set([...sellerMissing, ...aiMissing])];
+    const missing = [...new Set([...creatorMissing, ...aiMissing])];
     const note = document.createElement("p");
     note.className = "small";
     note.style.marginBottom = "0";
     note.textContent = missing.length
-      ? "Konfigurasi production yang belum tersedia: " + missing.join(", ") + "."
-      : seller.authorized && capabilities.ai_provider_configured
-        ? "Akun seller dan provider AI terdeteksi siap; siklus otomatis tetap harus diverifikasi."
-        : seller.authorized
-          ? "Akun seller terdeteksi terhubung; konfigurasi provider AI perlu diperiksa."
-          : "Konfigurasi dasar tersedia; akun seller masih perlu diotorisasi.";
+      ? "Untuk jalur affiliate creator, konfigurasi yang belum tersedia: " + missing.join(", ") + "."
+      : creator.authorized && capabilities.ai_provider_configured
+        ? "Akun affiliate creator dan provider AI terdeteksi siap; akses scope Affiliate API dan eksekusi nyata masih harus diuji."
+        : creator.authorized
+          ? "Akun affiliate creator terhubung; provider AI perlu diperiksa."
+          : "Jalur affiliate creator belum terotorisasi. Konfigurasi Seller API bukan pengganti otorisasi creator.";
     panel.appendChild(note);
   } catch {
     panel.textContent = "Status production tidak bisa dibaca. Coba muat ulang halaman.";
