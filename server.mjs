@@ -19,6 +19,7 @@ import { createMemoryStore, memoryRecord } from "./business-memory.mjs";
 import { createFileMemoryAdapter } from "./file-memory-adapter.mjs";
 import { startAutonomyScheduler } from "./autonomy-scheduler.mjs";
 import { sellerAuthStatus, buildSellerAuthorizeUrl, exchangeSellerCode, refreshSellerToken, getAuthorizedShops } from "./seller-auth.mjs";
+import { affiliateCreatorAuthStatus, buildAffiliateCreatorAuthorizeUrl, exchangeAffiliateCreatorCode, validateAffiliateCreatorToken } from "./affiliate-creator-auth.mjs";
 import { createUpstashMemoryAdapter, upstashMemoryConfigured } from "./upstash-memory-adapter.mjs";
 import { buildContentExecution } from "./content-executor.mjs";
 import { createPersistentSellerSessionStore } from "./seller-session-store.mjs";
@@ -39,7 +40,9 @@ const TIKTOK_API = "https://open.tiktokapis.com/v2";
 
 const pendingStates = new Map();
 const sellerStates = new Map();
+const affiliateCreatorStates = new Map();
 const sellerSessions = createPersistentSellerSessionStore();
+const affiliateCreatorSessions = createPersistentSellerSessionStore();
 const sessions = new Map();
 const tasks = new Map();
 const uploadJobs = new Map();
@@ -231,6 +234,15 @@ app.get("/health", async (_req, res) => {
   const sellerAuthorized = Boolean(
     primarySellerSession && Number(primarySellerSession.expiresAt) > Date.now()
   );
+  let primaryAffiliateCreatorSession = null;
+  try {
+    primaryAffiliateCreatorSession = await affiliateCreatorSessions.get("primary");
+  } catch (error) {
+    console.error("Affiliate creator readiness check failed:", error?.message || error);
+  }
+  const affiliateCreatorAuthorized = Boolean(
+    primaryAffiliateCreatorSession && Number(primaryAffiliateCreatorSession.expiresAt) > Date.now() && Number(primaryAffiliateCreatorSession.userType) === 1
+  );
 
   res.json({
     ok: true,
@@ -250,6 +262,7 @@ app.get("/health", async (_req, res) => {
     },
     capabilities: {
       seller_authorization: { ...sellerAuthStatus(), authorized: sellerAuthorized },
+      affiliate_creator_authorization: { ...affiliateCreatorAuthStatus(), authorized: affiliateCreatorAuthorized, granted_scopes: affiliateCreatorAuthorized ? (primaryAffiliateCreatorSession.grantedScopes || []) : [] },
       // Seller OAuth keeps accessToken and shopCipher in the persistent session,
       // so those do not need to be duplicated as environment variables.
       tiktok_shop_configured: Boolean(
@@ -399,6 +412,98 @@ app.get("/auth/tiktok-shop/callback", async (req, res) => {
   } catch (error) {
     res.status(502).send(html("TikTok Shop Seller Authorization", `<h1>Seller authorization error</h1><p class="err">${escapeHtml(error?.message || error)}</p>`));
   }
+});
+
+app.get("/auth/tiktok-shop/affiliate-creator", (_req, res) => {
+  const authStatus = affiliateCreatorAuthStatus();
+  if (!authStatus.configured) {
+    const missingList = authStatus.missing_fields.length
+      ? `<ul>${authStatus.missing_fields.map((field) => `<li><code>${escapeHtml(field)}</code></li>`).join("")}</ul>`
+      : "";
+    return res.status(503).send(html(
+      "TikTok Shop Affiliate Creator Authorization",
+      `<h1>Affiliate Creator belum dikonfigurasi</h1>
+       <p>Jalur ini khusus kreator affiliate yang mempromosikan produk seller lain. Ini berbeda dari TikTok Login Kit dan Seller Authorization.</p>
+       <p>Konfigurasi yang belum tersedia:</p>${missingList}
+       <p>Buat/siapkan aplikasi Affiliate di TikTok Shop Partner Center, aktifkan Creator API scopes yang disetujui, dan daftarkan Redirect URL persis berikut:</p>
+       <pre>${escapeHtml(authStatus.redirect_uri || (process.env.APP_BASE_URL ? process.env.APP_BASE_URL + "/auth/tiktok-shop/affiliate-creator/callback" : "APP_BASE_URL belum diatur"))}</pre>
+       <p><a href="https://partner.tiktokshop.com/docv2/page/678e3a362dccb8030ea6f98c">Panduan resmi Creator Authorization</a></p>
+       <p>Credential Affiliate disimpan terpisah dari credential Seller.</p><p><a href="/">Kembali ke Robot AI</a></p>`
+    ));
+  }
+  const state = randomToken(32);
+  affiliateCreatorStates.set(state, Date.now() + 10 * 60 * 1000);
+  try {
+    const url = buildAffiliateCreatorAuthorizeUrl(state);
+    setCookie(res, "robot_ai_affiliate_creator_state", state, 600);
+    return res.redirect(url);
+  } catch (error) {
+    console.error("Affiliate creator authorization link generation failed:", error?.message || error);
+    return res.status(503).send(html("Affiliate Creator Authorization", "<h1>Link authorization belum bisa dibuat.</h1><p>Periksa konfigurasi Affiliate Creator.</p><p><a href="/">Kembali ke Robot AI</a></p>"));
+  }
+});
+
+app.get("/auth/tiktok-shop/affiliate-creator/callback", async (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const state = String(req.query.state || "");
+  const cookieState = cookies.robot_ai_affiliate_creator_state;
+  clearCookie(res, "robot_ai_affiliate_creator_state");
+  const expiresAt = affiliateCreatorStates.get(state);
+  affiliateCreatorStates.delete(state);
+  if (!sameToken(state, cookieState) || !expiresAt || expiresAt <= Date.now()) {
+    return res.status(400).send(html("Affiliate Creator Authorization", "<h1>Authorization gagal</h1><p class=\"err\">State OAuth tidak valid atau kedaluwarsa.</p>"));
+  }
+  if (req.query.error) {
+    return res.status(400).send(html("Affiliate Creator Authorization", `<h1>Authorization ditolak</h1><p class="err">${escapeHtml(req.query.error_description || req.query.error)}</p>`));
+  }
+  const code = String(req.query.code || "");
+  if (!code) return res.status(400).send(html("Affiliate Creator Authorization", "<h1>Authorization code tidak ada</h1>"));
+  try {
+    const tokenResult = await exchangeAffiliateCreatorCode(code);
+    const validation = validateAffiliateCreatorToken(tokenResult.data);
+    const data = tokenResult.data?.data || {};
+    if (!tokenResult.response.ok || !validation.ok) {
+      return res.status(tokenResult.response.status || 502).send(html(
+        "Affiliate Creator Authorization",
+        `<h1>Creator token gagal divalidasi</h1><pre>${escapeHtml(JSON.stringify({ code: tokenResult.data?.code, message: tokenResult.data?.message, user_type: validation.user_type }, null, 2))}</pre><p>Creator token harus memiliki user_type = 1 dan access_token yang valid.</p><p><a href="/">Kembali ke Robot AI</a></p>`
+      ));
+    }
+    const creatorSession = {
+      createdAt: Date.now(),
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || null,
+      expiresAt: Date.now() + Math.max(60, Number(data.access_token_expire_in || data.expires_in || 86400) - 300) * 1000,
+      refreshExpiresAt: Date.now() + Math.max(60, Number(data.refresh_token_expire_in || data.refresh_expires_in || 365 * 86400) - 300) * 1000,
+      openId: data.open_id || null,
+      userType: Number(data.user_type),
+      grantedScopes: validation.granted_scopes
+    };
+    await affiliateCreatorSessions.set("primary", creatorSession);
+    return res.send(html(
+      "Affiliate Creator Connected",
+      `<h1 class="ok">Akun Affiliate Creator terhubung</h1><p>Robot AI menerima token kreator dan menyimpannya secara terenkripsi di backend.</p><p>Scopes yang diberikan:</p><pre>${escapeHtml(JSON.stringify(validation.granted_scopes, null, 2))}</pre><p>Ini membuktikan otorisasi kreator, bukan otomatis membuktikan semua Affiliate API telah disetujui. Akses API tetap bergantung pada scopes dan approval Partner Center.</p><p><a href="/">Kembali ke Robot AI</a></p>`
+    ));
+  } catch (error) {
+    console.error("Affiliate creator token exchange failed:", error?.message || error);
+    return res.status(502).send(html("Affiliate Creator Authorization", `<h1>Token exchange gagal</h1><p class="err">${escapeHtml(error?.message || error)}</p><p><a href="/">Kembali ke Robot AI</a></p>`));
+  }
+});
+
+app.get("/api/affiliate-creator/authorization-status", async (_req, res) => {
+  let session = null;
+  try {
+    session = await affiliateCreatorSessions.get("primary");
+  } catch {}
+  const connected = Boolean(session && Number(session.expiresAt) > Date.now() && Number(session.userType) === 1);
+  res.json({
+    ok: true,
+    affiliate_creator_authorization: {
+      ...affiliateCreatorAuthStatus(),
+      authorized: connected,
+      granted_scopes: connected ? (session.grantedScopes || []) : [],
+      token_expires_at: connected ? new Date(session.expiresAt).toISOString() : null
+    }
+  });
 });
 
 app.get("/api/shop/authorization-status", async (req, res) => {
@@ -1394,6 +1499,9 @@ app.listen(port, () => {
     tts_app_secret: Boolean(String(process.env.TTS_APP_SECRET || "").trim()),
     tts_service_id: Boolean(String(process.env.TTS_SERVICE_ID || "").trim()),
     tts_seller_auth_url: Boolean(String(process.env.TTS_SELLER_AUTH_URL || "").trim()),
-    tts_seller_auth_configured: sellerAuthStatus().configured
+    tts_seller_auth_configured: sellerAuthStatus().configured,
+    tts_affiliate_app_key: Boolean(String(process.env.TTS_AFFILIATE_APP_KEY || "").trim()),
+    tts_affiliate_app_secret: Boolean(String(process.env.TTS_AFFILIATE_APP_SECRET || "").trim()),
+    tts_affiliate_creator_auth_configured: affiliateCreatorAuthStatus().configured
   }));
 });
