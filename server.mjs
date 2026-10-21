@@ -19,7 +19,7 @@ import { createMemoryStore, memoryRecord } from "./business-memory.mjs";
 import { createFileMemoryAdapter } from "./file-memory-adapter.mjs";
 import { startAutonomyScheduler } from "./autonomy-scheduler.mjs";
 import { sellerAuthStatus, buildSellerAuthorizeUrl, exchangeSellerCode, refreshSellerToken, getAuthorizedShops } from "./seller-auth.mjs";
-import { affiliateCreatorAuthStatus, buildAffiliateCreatorAuthorizeUrl, exchangeAffiliateCreatorCode, validateAffiliateCreatorToken } from "./affiliate-creator-auth.mjs";
+import { affiliateCreatorAuthStatus, buildAffiliateCreatorAuthorizeUrl, exchangeAffiliateCreatorCode, refreshAffiliateCreatorToken, validateAffiliateCreatorToken, searchAffiliateCreatorProducts } from "./affiliate-creator-auth.mjs";
 import { createUpstashMemoryAdapter, upstashMemoryConfigured } from "./upstash-memory-adapter.mjs";
 import { buildContentExecution } from "./content-executor.mjs";
 import { createPersistentSellerSessionStore } from "./seller-session-store.mjs";
@@ -478,7 +478,10 @@ app.get("/auth/tiktok-shop/affiliate-creator/callback", async (req, res) => {
       userType: Number(data.user_type),
       grantedScopes: validation.granted_scopes
     };
+    const creatorSessionId = randomToken(32);
     await affiliateCreatorSessions.set("primary", creatorSession);
+    await affiliateCreatorSessions.set(creatorSessionId, creatorSession);
+    setCookie(res, "robot_ai_affiliate_creator_session", creatorSessionId, 86400);
     return res.send(html(
       "Affiliate Creator Connected",
       `<h1 class="ok">Akun Affiliate Creator terhubung</h1><p>Robot AI menerima token kreator dan menyimpannya secara terenkripsi di backend.</p><p>Scopes yang diberikan:</p><pre>${escapeHtml(JSON.stringify(validation.granted_scopes, null, 2))}</pre><p>Ini membuktikan otorisasi kreator, bukan otomatis membuktikan semua Affiliate API telah disetujui. Akses API tetap bergantung pada scopes dan approval Partner Center.</p><p><a href="/">Kembali ke Robot AI</a></p>`
@@ -489,12 +492,36 @@ app.get("/auth/tiktok-shop/affiliate-creator/callback", async (req, res) => {
   }
 });
 
-app.get("/api/affiliate-creator/authorization-status", async (_req, res) => {
-  let session = null;
-  try {
-    session = await affiliateCreatorSessions.get("primary");
-  } catch {}
-  const connected = Boolean(session && Number(session.expiresAt) > Date.now() && Number(session.userType) === 1);
+async function requireAffiliateCreatorSession(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  const sessionId = cookies.robot_ai_affiliate_creator_session;
+  let session = await affiliateCreatorSessions.get(sessionId);
+  if (!session || Number(session.userType) !== 1) return null;
+  if (Number(session.expiresAt) <= Date.now() && session.refreshToken && Number(session.refreshExpiresAt) > Date.now()) {
+    try {
+      const refreshed = await refreshAffiliateCreatorToken(session.refreshToken);
+      const validation = validateAffiliateCreatorToken(refreshed.data);
+      const data = refreshed.data?.data || {};
+      if (refreshed.response.ok && validation.ok) {
+        session.accessToken = data.access_token;
+        session.refreshToken = data.refresh_token || session.refreshToken;
+        session.expiresAt = Date.now() + Math.max(60, Number(data.access_token_expire_in || data.expires_in || 86400) - 300) * 1000;
+        session.refreshExpiresAt = Date.now() + Math.max(60, Number(data.refresh_token_expire_in || data.refresh_expires_in || 365 * 86400) - 300) * 1000;
+        session.grantedScopes = validation.granted_scopes;
+        await affiliateCreatorSessions.set(sessionId, session);
+        await affiliateCreatorSessions.set("primary", session);
+      }
+    } catch (error) {
+      console.error("Affiliate creator token refresh failed:", error?.message || error);
+    }
+  }
+  if (Number(session.expiresAt) <= Date.now()) return null;
+  return session;
+}
+
+app.get("/api/affiliate-creator/authorization-status", async (req, res) => {
+  const session = await requireAffiliateCreatorSession(req);
+  const connected = Boolean(session);
   res.json({
     ok: true,
     affiliate_creator_authorization: {
@@ -504,6 +531,38 @@ app.get("/api/affiliate-creator/authorization-status", async (_req, res) => {
       token_expires_at: connected ? new Date(session.expiresAt).toISOString() : null
     }
   });
+});
+
+app.post("/api/affiliate-creator/products/search", async (req, res) => {
+  const session = await requireAffiliateCreatorSession(req);
+  if (!session) return res.status(401).json({ error: "affiliate_creator_not_authorized" });
+  const scopes = Array.isArray(session.grantedScopes) ? session.grantedScopes : [];
+  if (scopes.length && !scopes.includes("creator.affiliate_collaboration.read")) {
+    return res.status(403).json({
+      error: "affiliate_creator_scope_missing",
+      required_scope: "creator.affiliate_collaboration.read",
+      granted_scopes: scopes
+    });
+  }
+  try {
+    const result = await searchAffiliateCreatorProducts(session.accessToken, req.body || {});
+    if (!result.response.ok || Number(result.data?.code) !== 0) {
+      return res.status(result.response.status || 502).json({
+        error: "affiliate_product_search_failed",
+        tiktok_code: result.data?.code ?? null,
+        message: typeof result.data?.message === "string" ? result.data.message.slice(0, 300) : "TikTok Shop Affiliate API request failed"
+      });
+    }
+    res.json({
+      ok: true,
+      count: Array.isArray(result.data?.data?.products) ? result.data.data.products.length : 0,
+      products: Array.isArray(result.data?.data?.products) ? result.data.data.products : [],
+      next_page_token: result.data?.data?.next_page_token || null,
+      request_id: result.data?.request_id || null
+    });
+  } catch (error) {
+    res.status(502).json({ error: "affiliate_product_search_unavailable", message: error?.message || String(error) });
+  }
 });
 
 app.get("/api/shop/authorization-status", async (req, res) => {
