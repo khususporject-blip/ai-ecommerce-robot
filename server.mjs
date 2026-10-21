@@ -236,7 +236,7 @@ app.get("/health", async (_req, res) => {
   );
   let primaryAffiliateCreatorSession = null;
   try {
-    primaryAffiliateCreatorSession = await affiliateCreatorSessions.get("primary");
+    primaryAffiliateCreatorSession = await affiliateCreatorSessions.get("affiliate-creator-primary");
   } catch (error) {
     console.error("Affiliate creator readiness check failed:", error?.message || error);
   }
@@ -478,8 +478,8 @@ app.get("/auth/tiktok-shop/affiliate-creator/callback", async (req, res) => {
       userType: Number(data.user_type),
       grantedScopes: validation.granted_scopes
     };
-    const creatorSessionId = randomToken(32);
-    await affiliateCreatorSessions.set("primary", creatorSession);
+    const creatorSessionId = "affiliate-creator-" + randomToken(32);
+    await affiliateCreatorSessions.set("affiliate-creator-primary", creatorSession);
     await affiliateCreatorSessions.set(creatorSessionId, creatorSession);
     setCookie(res, "robot_ai_affiliate_creator_session", creatorSessionId, 86400);
     return res.send(html(
@@ -509,7 +509,7 @@ async function requireAffiliateCreatorSession(req) {
         session.refreshExpiresAt = Date.now() + Math.max(60, Number(data.refresh_token_expire_in || data.refresh_expires_in || 365 * 86400) - 300) * 1000;
         session.grantedScopes = validation.granted_scopes;
         await affiliateCreatorSessions.set(sessionId, session);
-        await affiliateCreatorSessions.set("primary", session);
+        await affiliateCreatorSessions.set("affiliate-creator-primary", session);
       }
     } catch (error) {
       console.error("Affiliate creator token refresh failed:", error?.message || error);
