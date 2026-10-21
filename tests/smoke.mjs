@@ -22,7 +22,7 @@ assert.match(sellerAuthSource, /service_id_configured: Boolean\(SERVICE_ID\)/);
 assert.match(affiliateCreatorAuthSource, /shop\.tiktok\.com\/alliance\/creator\/auth/);
 assert.match(affiliateCreatorAuthSource, /grant_type: "authorized_code"/);
 assert.match(server, /\/auth\/tiktok-shop\/affiliate-creator\/callback/);
-assert.match(server, /Number\(data\.user_type\) !== 1/);
+assert.match(server, /validateAffiliateCreatorToken\(tokenResult\.data\)/);
 assert.match(indexHtml, /Hubungkan TikTok Shop Affiliate Creator/);
 assert.match(sellerAuthSource, /const path = "\/authorization\/202309\/shops";/);
 assert.match(sellerAuthSource, /missing_fields: missingFields/);
