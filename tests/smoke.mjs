@@ -8,15 +8,25 @@ import { sellerAuthStatus, buildSellerAuthorizeUrl } from "../seller-auth.mjs";
 import { upstashMemoryConfigured, createUpstashMemoryAdapter } from "../upstash-memory-adapter.mjs";
 import { buildContentExecution } from "../content-executor.mjs";
 import { generateText, aiProviderStatus } from "../ai-provider.mjs";
+import { validateAffiliateCreatorToken } from "../affiliate-creator-auth.mjs";
 
 const server = await fs.readFile(new URL("../server.mjs", import.meta.url), "utf8");
 const pkg = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
 const scheduler = await fs.readFile(new URL("../autonomy-scheduler.mjs", import.meta.url), "utf8");
 const shopClient = await fs.readFile(new URL("../tiktok-shop-client.mjs", import.meta.url), "utf8");
 const sellerAuthSource = await fs.readFile(new URL("../seller-auth.mjs", import.meta.url), "utf8");
+const affiliateCreatorAuthSource = await fs.readFile(new URL("../affiliate-creator-auth.mjs", import.meta.url), "utf8");
 const indexHtml = await fs.readFile(new URL("../index.html", import.meta.url), "utf8");
 
 assert.match(sellerAuthSource, /service_id_configured: Boolean\(SERVICE_ID\)/);
+assert.match(affiliateCreatorAuthSource, /shop\.tiktok\.com\/alliance\/creator\/auth/);
+assert.match(affiliateCreatorAuthSource, /grant_type: "authorized_code"/);
+assert.match(server, /\/auth\/tiktok-shop\/affiliate-creator\/callback/);
+assert.match(server, /validateAffiliateCreatorToken\(tokenResult\.data\)/);
+assert.match(server, /\/api\/affiliate-creator\/products\/search/);
+assert.match(server, /creator\.affiliate_collaboration\.read/);
+assert.match(affiliateCreatorAuthSource, /affiliate_creator\/202405\/open_collaborations\/products\/search/);
+assert.match(indexHtml, /Hubungkan TikTok Shop Affiliate Creator/);
 assert.match(sellerAuthSource, /const path = "\/authorization\/202309\/shops";/);
 assert.match(sellerAuthSource, /missing_fields: missingFields/);
 assert.match(indexHtml, /\/auth\/tiktok-shop\/seller/);
@@ -25,7 +35,7 @@ assert.match(indexHtml, /loadConnectionReadiness/);
 assert.match(indexHtml, /ai_provider_configured/);
 assert.match(server, /ai_provider_missing_fields:.*AI_API_KEY/);
 assert.match(indexHtml, /ai_provider_missing_fields/);
-assert.match(indexHtml, /Konfigurasi production yang belum tersedia/);
+assert.match(indexHtml, /konfigurasi yang belum tersedia/);
 
 assert.match(server, /v2\/auth\/authorize\//);
 assert.match(server, /v2\/oauth\/token\//);
@@ -255,4 +265,52 @@ try {
   else process.env.AI_MODEL = originalAiModel;
   if (originalAiBaseUrl === undefined) delete process.env.AI_BASE_URL;
   else process.env.AI_BASE_URL = originalAiBaseUrl;
+}
+
+const creatorTokenGood = validateAffiliateCreatorToken({
+  code: 0,
+  data: { user_type: 1, access_token: "creator-token", granted_scopes: ["creator.affiliate_collaboration.read"] }
+});
+assert.equal(creatorTokenGood.ok, true);
+assert.equal(creatorTokenGood.user_type, 1);
+assert.deepEqual(creatorTokenGood.granted_scopes, ["creator.affiliate_collaboration.read"]);
+assert.equal(validateAffiliateCreatorToken({
+  code: 0,
+  data: { user_type: 0, access_token: "seller-token" }
+}).ok, false);
+assert.equal(validateAffiliateCreatorToken({
+  code: 0,
+  data: { user_type: 1 }
+}).ok, false);
+
+const originalAffiliateKey = process.env.TTS_AFFILIATE_APP_KEY;
+const originalAffiliateSecret = process.env.TTS_AFFILIATE_APP_SECRET;
+const originalAffiliateFetch = globalThis.fetch;
+try {
+  process.env.TTS_AFFILIATE_APP_KEY = "affiliate-test-key";
+  process.env.TTS_AFFILIATE_APP_SECRET = "affiliate-test-secret";
+  const affiliateModule = await import("../affiliate-creator-auth.mjs?affiliate-search-smoke");
+  globalThis.fetch = async (url, init) => {
+    const parsedUrl = new URL(url);
+    assert.equal(parsedUrl.pathname, "/affiliate_creator/202405/open_collaborations/products/search");
+    assert.equal(parsedUrl.searchParams.get("app_key"), "affiliate-test-key");
+    assert.ok(parsedUrl.searchParams.get("sign"));
+    assert.equal(init.method, "POST");
+    assert.equal(init.headers["x-tts-access-token"], "fake-creator-token");
+    assert.deepEqual(JSON.parse(init.body), { title_keywords: ["home"] });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { products: [{ product_id: "p1" }], next_page_token: "next" } })
+    };
+  };
+  const search = await affiliateModule.searchAffiliateCreatorProducts("fake-creator-token", { title_keywords: ["home"] });
+  assert.equal(search.response.ok, true);
+  assert.equal(search.data.data.products[0].product_id, "p1");
+} finally {
+  globalThis.fetch = originalAffiliateFetch;
+  if (originalAffiliateKey === undefined) delete process.env.TTS_AFFILIATE_APP_KEY;
+  else process.env.TTS_AFFILIATE_APP_KEY = originalAffiliateKey;
+  if (originalAffiliateSecret === undefined) delete process.env.TTS_AFFILIATE_APP_SECRET;
+  else process.env.TTS_AFFILIATE_APP_SECRET = originalAffiliateSecret;
 }

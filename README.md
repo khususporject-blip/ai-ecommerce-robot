@@ -82,3 +82,18 @@ Runtime capabilities remain data- and authorization-gated. The system must never
 
 
 <!-- production deployment trigger: 2026-10-01T17:51:11.514Z -->
+
+## TikTok Shop Affiliate Creator (separate from Seller API)
+
+Robot AI has a dedicated creator authorization entry point: `GET /auth/tiktok-shop/affiliate-creator`, with callback `/auth/tiktok-shop/affiliate-creator/callback`. This is the intended path for a creator who promotes other sellers' products without holding inventory. It is not interchangeable with Seller Authorization or TikTok Login Kit.
+
+Configure these production variables from the **Affiliate app** in TikTok Shop Partner Center (do not copy seller or Login Kit credentials unless Partner Center explicitly confirms they belong to this same Affiliate app):
+
+- `TTS_AFFILIATE_APP_KEY`
+- `TTS_AFFILIATE_APP_SECRET`
+- `APP_BASE_URL=https://robot-ai-production-1fdb.up.railway.app` (used to derive the callback unless `TTS_AFFILIATE_REDIRECT_URI` is set)
+- Optional `TTS_AFFILIATE_REDIRECT_URI=https://robot-ai-production-1fdb.up.railway.app/auth/tiktok-shop/affiliate-creator/callback`
+
+Register that exact callback in Partner Center. The flow uses the official creator authorization URL with a server-generated, single-use state, exchanges the callback code server-side, requires `user_type=1`, and stores creator tokens encrypted separately from seller tokens. Status is available at `GET /api/affiliate-creator/authorization-status` and in `/health`. Once the creator token includes `creator.affiliate_collaboration.read`, the owner-session-protected `POST /api/affiliate-creator/products/search` searches the official open-collaboration product marketplace using optional `title_keywords`, `sales_price_range`, `category`, `commission_rate_range`, `page_size`, `page_token`, `sort_field`, and `sort_order` inputs. It returns TikTok API results without inventing product facts.
+
+**Important external gate:** TikTok Shop Affiliate API access is inactive by default and may require Partner Center / Partner Manager approval and approved creator scopes. The new flow cannot manufacture those approvals. After the account is authorized, validate the returned `granted_scopes` and test a real Creator API call before enabling product discovery or posting. Official references: [Creator authorization guide](https://partner.tiktokshop.com/docv2/page/678e3a362dccb8030ea6f98c) and [Affiliate integration](https://partner.tiktokshop.com/docv2/page/affiliate-integration).
