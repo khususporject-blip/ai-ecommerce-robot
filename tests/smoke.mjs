@@ -23,6 +23,9 @@ assert.match(affiliateCreatorAuthSource, /shop\.tiktok\.com\/alliance\/creator\/
 assert.match(affiliateCreatorAuthSource, /grant_type: "authorized_code"/);
 assert.match(server, /\/auth\/tiktok-shop\/affiliate-creator\/callback/);
 assert.match(server, /validateAffiliateCreatorToken\(tokenResult\.data\)/);
+assert.match(server, /\/api\/affiliate-creator\/products\/search/);
+assert.match(server, /creator\.affiliate_collaboration\.read/);
+assert.match(affiliateCreatorAuthSource, /affiliate_creator\/202405\/open_collaborations\/products\/search/);
 assert.match(indexHtml, /Hubungkan TikTok Shop Affiliate Creator/);
 assert.match(sellerAuthSource, /const path = "\/authorization\/202309\/shops";/);
 assert.match(sellerAuthSource, /missing_fields: missingFields/);
@@ -279,3 +282,35 @@ assert.equal(validateAffiliateCreatorToken({
   code: 0,
   data: { user_type: 1 }
 }).ok, false);
+
+const originalAffiliateKey = process.env.TTS_AFFILIATE_APP_KEY;
+const originalAffiliateSecret = process.env.TTS_AFFILIATE_APP_SECRET;
+const originalAffiliateFetch = globalThis.fetch;
+try {
+  process.env.TTS_AFFILIATE_APP_KEY = "affiliate-test-key";
+  process.env.TTS_AFFILIATE_APP_SECRET = "affiliate-test-secret";
+  const affiliateModule = await import("../affiliate-creator-auth.mjs?affiliate-search-smoke");
+  globalThis.fetch = async (url, init) => {
+    const parsedUrl = new URL(url);
+    assert.equal(parsedUrl.pathname, "/affiliate_creator/202405/open_collaborations/products/search");
+    assert.equal(parsedUrl.searchParams.get("app_key"), "affiliate-test-key");
+    assert.ok(parsedUrl.searchParams.get("sign"));
+    assert.equal(init.method, "POST");
+    assert.equal(init.headers["x-tts-access-token"], "fake-creator-token");
+    assert.deepEqual(JSON.parse(init.body), { title_keywords: ["home"] });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { products: [{ product_id: "p1" }], next_page_token: "next" } })
+    };
+  };
+  const search = await affiliateModule.searchAffiliateCreatorProducts("fake-creator-token", { title_keywords: ["home"] });
+  assert.equal(search.response.ok, true);
+  assert.equal(search.data.data.products[0].product_id, "p1");
+} finally {
+  globalThis.fetch = originalAffiliateFetch;
+  if (originalAffiliateKey === undefined) delete process.env.TTS_AFFILIATE_APP_KEY;
+  else process.env.TTS_AFFILIATE_APP_KEY = originalAffiliateKey;
+  if (originalAffiliateSecret === undefined) delete process.env.TTS_AFFILIATE_APP_SECRET;
+  else process.env.TTS_AFFILIATE_APP_SECRET = originalAffiliateSecret;
+}
